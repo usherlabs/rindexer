@@ -126,6 +126,50 @@ fn one_indexed_filter_entry_preserves_every_topic_value() {
 }
 
 #[test]
+fn maker_wallet_transfer_shape_requires_separate_from_and_to_details() {
+    let from_details = AddressDetails {
+        address: ValueOrArray::Value(Address::ZERO),
+        indexed_filters: Some(vec![EventInputIndexedFilters {
+            event_name: "Transfer".to_string(),
+            indexed_1: Some(vec!["1".to_string()]),
+            indexed_2: None,
+            indexed_3: None,
+        }]),
+    };
+    let to_details = AddressDetails {
+        address: ValueOrArray::Value(Address::ZERO),
+        indexed_filters: Some(vec![EventInputIndexedFilters {
+            event_name: "Transfer".to_string(),
+            indexed_1: None,
+            indexed_2: Some(vec!["1".to_string()]),
+            indexed_3: None,
+        }]),
+    };
+
+    let from_filter = RindexerEventFilter::new_address_filter(
+        &B256::ZERO,
+        "Transfer",
+        &from_details,
+        U64::ZERO,
+        U64::from(10),
+    )
+    .expect("from detail should build");
+    let to_filter = RindexerEventFilter::new_address_filter(
+        &B256::ZERO,
+        "Transfer",
+        &to_details,
+        U64::ZERO,
+        U64::from(10),
+    )
+    .expect("to detail should build");
+
+    assert!(from_filter.topic1().contains(&topic_number(1)));
+    assert!(from_filter.topic2().is_empty());
+    assert!(to_filter.topic1().is_empty());
+    assert!(to_filter.topic2().contains(&topic_number(1)));
+}
+
+#[test]
 fn health_reorg_and_hypersync_defaults_are_observable_through_public_types() {
     assert_eq!(Global::default().health_port, 8080);
 
