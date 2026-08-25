@@ -28,6 +28,13 @@ UPSTREAM_STATES = frozenset({"not_assessed", "planned", "submitted", "merged", "
 RELEASE_TAG = re.compile(r"^fiet-v0\.43\.0-[1-9][0-9]*$")
 GIT_OID = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+FIET_PATCH_ID = re.compile(r"^fiet-[a-z0-9]+(?:-[a-z0-9]+)*$")
+TRUSTED_FIET_SOURCE_REPOSITORIES = frozenset(
+    {
+        "https://github.com/usherlabs/fiet-maker",
+        "https://github.com/usherlabs/rindexer",
+    }
+)
 
 
 def canonical_json_bytes(value: Any) -> bytes:
@@ -285,8 +292,16 @@ def validate_governance(
     for patch_id in sorted(set(patch_ids)):
         if patch_ids.count(patch_id) > 1:
             errors.append(f"duplicate patch id: {patch_id}")
-    if sorted(item_ids) != sorted(patch_ids):
-        errors.append("inventory and ledger patch IDs must match exactly")
+    missing_inventory_ids = sorted(set(item_ids) - set(patch_ids))
+    if missing_inventory_ids:
+        errors.append(
+            "missing ledger patches for inventory IDs: " + ", ".join(missing_inventory_ids)
+        )
+    for patch_id in sorted(set(patch_ids) - set(item_ids)):
+        if not FIET_PATCH_ID.fullmatch(patch_id):
+            errors.append(
+                f"non-inventory patch IDs must use fiet-<name>: {patch_id}"
+            )
 
     inventory_by_id = {str(item.get("id")): item for item in items}
     previous_by_id = {
@@ -309,11 +324,34 @@ def validate_governance(
             errors.append(f"patch {patch_id}: final disposition {disposition} requires evidence")
 
         source = _mapping(patch.get("source"))
+        source_repository = source.get("repository")
+        source_branch = source.get("branch")
+        source_commits = [str(value) for value in _sequence(source.get("commits"))]
+        if not source_commits:
+            errors.append(f"patch {patch_id}: at least one source commit is required")
+        for source_commit in source_commits:
+            if not GIT_OID.fullmatch(source_commit):
+                errors.append(
+                    f"patch {patch_id}: source commit is not a full Git OID: {source_commit}"
+                )
         inventory_item = inventory_by_id.get(patch_id)
         if inventory_item is not None:
-            source_commits = [str(value) for value in _sequence(source.get("commits"))]
+            inventory_source = _mapping(inventory.get("source"))
+            if source_repository != inventory_source.get("repository"):
+                errors.append(
+                    f"patch {patch_id}: source repository must match inventory source"
+                )
+            if source_branch != inventory_source.get("branch"):
+                errors.append(f"patch {patch_id}: source branch must match inventory source")
             if source_commits != [str(inventory_item.get("commit"))]:
                 errors.append(f"patch {patch_id}: source commit must match its inventory item")
+        elif FIET_PATCH_ID.fullmatch(patch_id):
+            if source_repository not in TRUSTED_FIET_SOURCE_REPOSITORIES:
+                errors.append(
+                    f"patch {patch_id}: FIET source repository is not trusted: {source_repository}"
+                )
+            if not isinstance(source_branch, str) or not source_branch:
+                errors.append(f"patch {patch_id}: FIET source branch is required")
 
         baseline = _mapping(patch.get("canonical_baseline"))
         for field in ("tag", "commit", "tree"):
