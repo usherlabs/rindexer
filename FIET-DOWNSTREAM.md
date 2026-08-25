@@ -47,8 +47,9 @@ Qualified tags use `fiet-v<canonical-version>-<revision>`, beginning with `fiet-
 ## Qualification toolchain
 
 Downstream CI and release workflows use the exact Rust toolchain recorded in
-`rust-toolchain.toml`. The v0.43 line is pinned to Rust 1.97.0. Untouched
-v0.43 passes its strict Clippy gate on that toolchain; Rust 1.98 introduces
+`rust-toolchain.toml`, including its `clippy` and `rustfmt` components. The
+v0.43 line is pinned to Rust 1.97.0. Untouched v0.43 passes its strict Clippy
+gate on that toolchain; Rust 1.98 introduces
 `result_large_err` diagnostics for existing public error types when CI enables
 `-D warnings`. A toolchain update therefore requires its own non-behavioral CI
 qualification instead of silently changing the release gate.
