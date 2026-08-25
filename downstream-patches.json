@@ -51,18 +51,23 @@
       "title": "Terminate closed native-transfer processor channels",
       "owner": "usherlabs",
       "rationale": "Determine whether canonical v0.43 terminates or reports a closed native-transfer processor channel instead of hanging silently.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "ported",
+      "release_state": "active",
       "source": {"repository": "https://github.com/outerlook/rindexer", "branch": "fix/multi-indexed-filter", "commits": ["9d0efbf9872b08df778c530558bbb6ee4504cf3b"]},
       "affected_paths": ["core/src/indexer/native_transfer.rs"],
       "affected_behaviors": ["native-transfer processor-channel closure"],
       "canonical_baseline": {"tag": "v0.43.0", "commit": "4f441289b83855c357239d2729fb725a56c3060b", "tree": "80a2698f6be13949d84d920b01c02125af598d09"},
       "requirement_ids": ["rindexer-indexing-integrity:explicit-live-stream-completion-semantics"],
-      "regression_tests": [{"id": "native-transfer-channel-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
-      "upstream": {"status": "not_assessed"},
-      "evidence": [],
-      "downstream_commits": [],
-      "ancestry_markers": []
+      "regression_tests": [{"id": "native-transfer-channel-closure", "path": "core/src/indexer/native_transfer.rs", "command": "cargo test -p rindexer indexer::native_transfer::tests::native_transfer_block_processor_exits_when_input_channel_is_closed -- --exact"}],
+      "upstream": {"status": "planned"},
+      "evidence": [
+        "characterization/v0.43/vanilla-baseline-receipt.json",
+        "characterization observation native_processor_closed_channel_sleeps=true",
+        "focused regression failed by timeout before a23ab7de52d32fb4abbb828fba5fb9a8aa784160 and passed after it",
+        "native-transfer module regression suite: 16 passed, 0 failed"
+      ],
+      "downstream_commits": ["a23ab7de52d32fb4abbb828fba5fb9a8aa784160"],
+      "ancestry_markers": ["FIET-PATCH:outerlook-9d0efbf-native-transfer-channel-closure"]
     },
     {
       "id": "outerlook-450ae49-multiple-indexed-filters",
