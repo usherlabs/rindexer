@@ -78,7 +78,8 @@ pub use indexer::no_code::resolve_table_column_types;
 pub use lazy_static::lazy_static;
 pub use reqwest::header::HeaderMap;
 pub use start::{
-    start_rindexer, start_rindexer_no_code, IndexerNoCodeDetails, IndexingDetails, StartDetails,
+    start_rindexer, start_rindexer_embedded, start_rindexer_no_code,
+    start_rindexer_no_code_embedded, IndexerNoCodeDetails, IndexingDetails, StartDetails,
     StartNoCodeDetails,
 };
 pub use tokio::main as rindexer_main;
