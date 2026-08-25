@@ -120,6 +120,43 @@ def _governed_paths() -> dict[str, object]:
     }
 
 
+def _fiet_authored_patch() -> dict[str, object]:
+    return {
+        "id": "fiet-maker-controlled-embedded-lifecycle",
+        "title": "Return embedded lifecycle control to Maker",
+        "owner": "usherlabs",
+        "rationale": "Keep process signals, health, drain deadlines, and exit status caller-owned.",
+        "audit_disposition": "ported",
+        "release_state": "active",
+        "source": {
+            "repository": "https://github.com/usherlabs/fiet-maker",
+            "branch": "docs/phase-1-schema-specification-vocabulary",
+            "commits": ["bba8af53009a665323974b0bb39840297073eadc"],
+        },
+        "affected_paths": ["core/src/start.rs", "core/src/lib.rs"],
+        "affected_behaviors": ["caller-owned embedded lifecycle"],
+        "canonical_baseline": {
+            "tag": CANONICAL_TAG,
+            "commit": CANONICAL_COMMIT,
+            "tree": CANONICAL_TREE,
+        },
+        "requirement_ids": [
+            "rindexer-indexing-integrity:maker-controlled-embedded-lifecycle"
+        ],
+        "regression_tests": [
+            {
+                "id": "embedded-lifecycle-governance",
+                "path": "scripts/test_downstream_governance.py",
+                "command": "python3 -m unittest scripts/test_downstream_governance.py",
+            }
+        ],
+        "upstream": {"status": "planned"},
+        "evidence": ["scripts/test_qualify_embedded_lifecycle.py"],
+        "downstream_commits": ["1" * 40],
+        "ancestry_markers": ["FIET-PATCH:maker-controlled-embedded-lifecycle"],
+    }
+
+
 class DownstreamGovernanceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.inventory = _inventory()
@@ -135,6 +172,62 @@ class DownstreamGovernanceTests(unittest.TestCase):
         self.ledger["patches"].append(copy.deepcopy(self.ledger["patches"][0]))
         errors = validate_governance(self.ledger, self.inventory, self.paths, REPO_ROOT)
         self.assertTrue(any("duplicate patch id" in error for error in errors), errors)
+
+    def test_fiet_authored_patch_may_extend_hashed_outerlook_inventory(self) -> None:
+        self.ledger["patches"].append(_fiet_authored_patch())
+
+        self.assertEqual(
+            validate_governance(
+                self.ledger,
+                self.inventory,
+                self.paths,
+                REPO_ROOT,
+                verify_repository=False,
+            ),
+            [],
+        )
+
+    def test_non_fiet_extra_patch_is_rejected(self) -> None:
+        extra = _fiet_authored_patch()
+        extra["id"] = "custom-maker-controlled-lifecycle"
+        self.ledger["patches"].append(extra)
+
+        errors = validate_governance(
+            self.ledger,
+            self.inventory,
+            self.paths,
+            REPO_ROOT,
+            verify_repository=False,
+        )
+        self.assertTrue(any("non-inventory patch IDs must use fiet-" in error for error in errors), errors)
+
+    def test_missing_inventory_patch_remains_rejected(self) -> None:
+        self.ledger["patches"] = []
+
+        errors = validate_governance(
+            self.ledger,
+            self.inventory,
+            self.paths,
+            REPO_ROOT,
+            verify_repository=False,
+        )
+        self.assertTrue(any("missing ledger patches for inventory IDs" in error for error in errors), errors)
+
+    def test_outerlook_source_identity_matches_inventory_source(self) -> None:
+        self.ledger["patches"][0]["source"]["repository"] = (
+            "https://github.com/usherlabs/rindexer"
+        )
+        self.ledger["patches"][0]["source"]["branch"] = "fiet/v0.43"
+
+        errors = validate_governance(
+            self.ledger,
+            self.inventory,
+            self.paths,
+            REPO_ROOT,
+            verify_repository=False,
+        )
+        self.assertTrue(any("source repository must match inventory source" in error for error in errors), errors)
+        self.assertTrue(any("source branch must match inventory source" in error for error in errors), errors)
 
     def test_inventory_hash_and_exact_baseline_are_enforced(self) -> None:
         tampered = copy.deepcopy(self.inventory)
