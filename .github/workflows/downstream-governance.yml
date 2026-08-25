@@ -56,6 +56,12 @@ jobs:
           python3 scripts/characterize_v043_baseline.py
           --output characterization/v0.43/vanilla-baseline-source-receipt.generated.json
 
+      - name: Run untouched v0.43 public API probes
+        run: >-
+          cargo test
+          --locked
+          --manifest-path characterization/v0.43/public-api-probe/Cargo.toml
+
       - name: Validate baseline, inventory, ledger, ancestry, and governed paths
         run: python3 scripts/validate_downstream_governance.py
 

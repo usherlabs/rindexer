@@ -34,6 +34,9 @@
     "scripts/validate_downstream_governance.py",
     "scripts/verify_canonical_contribution.py",
     "characterization/v0.43/README.md",
+    "characterization/v0.43/public-api-probe/Cargo.toml",
+    "characterization/v0.43/public-api-probe/Cargo.lock",
+    "characterization/v0.43/public-api-probe/tests/vanilla.rs",
     "characterization/v0.43/vanilla-baseline-source-receipt.json",
     "characterization/v0.43/vanilla-baseline-test-results.json",
     "rust-toolchain.toml"
