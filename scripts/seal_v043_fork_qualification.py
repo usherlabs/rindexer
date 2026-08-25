@@ -34,13 +34,18 @@ REQUIRED_RUNS = frozenset(
     }
 )
 ARTIFACT_PATHS = {
-    "inventory": "downstream-patch-inventory.json",
-    "ledger": "downstream-patches.json",
-    "governed_paths": "governed-paths.json",
+    "inventory": "qualification/v0.43/candidate-downstream-patch-inventory.json",
+    "ledger": "qualification/v0.43/candidate-downstream-patches.json",
+    "governed_paths": "qualification/v0.43/candidate-governed-paths.json",
     "embedded_lifecycle_receipt": (
         "qualification/v0.43/candidate-embedded-lifecycle-receipt.json"
     ),
     "test_results": "qualification/v0.43/candidate-test-results.json",
+}
+LIVE_GOVERNANCE_PATHS = {
+    "inventory": "downstream-patch-inventory.json",
+    "ledger": "downstream-patches.json",
+    "governed_paths": "governed-paths.json",
 }
 
 
@@ -57,6 +62,28 @@ def _load_object(path: Path) -> Mapping[str, Any]:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def stage_candidate_governance_snapshots(repo_root: Path) -> None:
+    """Retain the candidate governance inputs once, without later rewrites."""
+    repo_root = repo_root.resolve()
+    labels = {
+        "inventory": "inventory",
+        "ledger": "ledger",
+        "governed_paths": "governed paths",
+    }
+    for name, live_relative in LIVE_GOVERNANCE_PATHS.items():
+        live_path = repo_root / live_relative
+        snapshot_path = repo_root / ARTIFACT_PATHS[name]
+        content = live_path.read_bytes()
+        if snapshot_path.exists():
+            if snapshot_path.read_bytes() != content:
+                raise ForkQualificationSealError(
+                    f"refusing to overwrite retained candidate {labels[name]}"
+                )
+            continue
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path.write_bytes(content)
 
 
 def _validate_results(results: Mapping[str, Any]) -> None:
@@ -135,11 +162,7 @@ def build_fork_qualification_receipt(
             )
         artifacts[name] = {"path": relative_path, "sha256": _sha256(path)}
 
-    # The unit fixture intentionally uses small stand-in artifacts; production
-    # sealing validates the retained ledger and lifecycle receipt themselves.
-    ledger = _load_object(repo_root / ARTIFACT_PATHS["ledger"])
-    if ledger.get("schema_version") is not None:
-        _validate_bound_artifacts(repo_root)
+    _validate_bound_artifacts(repo_root)
 
     source = results["source_under_test"]
     return {
@@ -233,11 +256,7 @@ def verify_fork_qualification_receipt(
     try:
         _validate_bound_artifacts(repo_root)
     except ForkQualificationSealError as error:
-        # Unit fixtures use stand-in artifacts without production schema fields.
-        ledger_path = repo_root / ARTIFACT_PATHS["ledger"]
-        ledger = _load_object(ledger_path) if ledger_path.is_file() else {}
-        if ledger.get("schema_version") is not None:
-            errors.append(str(error))
+        errors.append(str(error))
     return sorted(set(errors))
 
 
@@ -274,6 +293,7 @@ def main() -> int:
             print(f"fork qualification receipt is valid: {output_path}")
             return 0
 
+        stage_candidate_governance_snapshots(repo_root)
         receipt = build_fork_qualification_receipt(repo_root, results_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
