@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/usherlabs/rindexer/blob/fiet/v0.43/schemas/downstream-patches.schema.json",
+  "title": "FIET downstream rindexer patch ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schema_version", "canonical", "inventory", "release", "governed_paths", "patches"],
+  "properties": {
+    "$schema": {"const": "./schemas/downstream-patches.schema.json"},
+    "schema_version": {"const": "fiet-rindexer-downstream-patch-ledger/v1"},
+    "canonical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "commit", "tree"],
+      "properties": {
+        "repository": {"const": "https://github.com/joshstevens19/rindexer"},
+        "tag": {"const": "v0.43.0"},
+        "commit": {"const": "4f441289b83855c357239d2729fb725a56c3060b"},
+        "tree": {"const": "80a2698f6be13949d84d920b01c02125af598d09"}
+      }
+    },
+    "inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "canonical_sha256"],
+      "properties": {
+        "path": {"const": "downstream-patch-inventory.json"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch", "state", "tag", "peeled_commit", "peeled_tree"],
+      "properties": {
+        "branch": {"const": "fiet/v0.43"},
+        "state": {"enum": ["audit", "candidate", "qualified"]},
+        "tag": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^fiet-v0\\.43\\.0-[1-9][0-9]*$"}]},
+        "peeled_commit": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/gitOid"}]},
+        "peeled_tree": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/gitOid"}]}
+      }
+    },
+    "governed_paths": {"const": "governed-paths.json"},
+    "patches": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/patch"}}
+  },
+  "$defs": {
+    "gitOid": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "strings": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "branch", "commits"],
+      "properties": {
+        "repository": {"const": "https://github.com/outerlook/rindexer"},
+        "branch": {"const": "fix/multi-indexed-filter"},
+        "commits": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/gitOid"}}
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "commit", "tree"],
+      "properties": {
+        "tag": {"const": "v0.43.0"},
+        "commit": {"const": "4f441289b83855c357239d2729fb725a56c3060b"},
+        "tree": {"const": "80a2698f6be13949d84d920b01c02125af598d09"}
+      }
+    },
+    "regressionTest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "command"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "command": {"type": "string", "minLength": 1}
+      }
+    },
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {"enum": ["not_assessed", "planned", "submitted", "merged", "declined", "not_applicable"]},
+        "url": {"type": "string", "minLength": 1},
+        "commit": {"$ref": "#/$defs/gitOid"},
+        "release": {"type": "string", "minLength": 1}
+      }
+    },
+    "patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "owner", "rationale", "audit_disposition", "release_state", "source", "affected_paths", "affected_behaviors", "canonical_baseline", "requirement_ids", "regression_tests", "upstream", "evidence", "downstream_commits", "ancestry_markers"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^outerlook-[0-9a-f]{7}-[a-z0-9-]+$"},
+        "title": {"type": "string", "minLength": 1},
+        "owner": {"type": "string", "minLength": 1},
+        "rationale": {"type": "string", "minLength": 1},
+        "audit_disposition": {"enum": ["pending", "ported", "absorbed", "superseded", "not-behavioral"]},
+        "release_state": {"enum": ["pending", "active", "inactive"]},
+        "source": {"$ref": "#/$defs/source"},
+        "affected_paths": {"$ref": "#/$defs/strings"},
+        "affected_behaviors": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "canonical_baseline": {"$ref": "#/$defs/baseline"},
+        "requirement_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "regression_tests": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/regressionTest"}},
+        "upstream": {"$ref": "#/$defs/upstream"},
+        "evidence": {"$ref": "#/$defs/strings"},
+        "downstream_commits": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/gitOid"}},
+        "ancestry_markers": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^FIET-PATCH:[a-z0-9-]+$"}}
+      }
+    }
+  }
+}

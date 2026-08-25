@@ -1,0 +1,28 @@
+name: Canonical rindexer drift
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Report canonical release drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Produce read-only canonical comparison
+        run: python3 scripts/report_canonical_drift.py "$RUNNER_TEMP/rindexer-canonical-drift.md"
+
+      - name: Publish job summary
+        run: cat "$RUNNER_TEMP/rindexer-canonical-drift.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rindexer-canonical-drift
+          path: ${{ runner.temp }}/rindexer-canonical-drift.md
+          if-no-files-found: error

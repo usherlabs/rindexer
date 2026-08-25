@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/usherlabs/rindexer/blob/fiet/v0.43/schemas/downstream-patch-inventory.schema.json",
+  "title": "FIET rindexer pre-convergence deviation inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schema_version", "source", "items"],
+  "properties": {
+    "$schema": {"const": "./schemas/downstream-patch-inventory.schema.json"},
+    "schema_version": {"const": "fiet-rindexer-pre-convergence-inventory/v1"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "branch", "base_tag", "base_commit", "base_tree", "head_commit", "head_tree"],
+      "properties": {
+        "repository": {"const": "https://github.com/outerlook/rindexer"},
+        "branch": {"const": "fix/multi-indexed-filter"},
+        "base_tag": {"const": "v0.35.0"},
+        "base_commit": {"$ref": "#/$defs/gitOid"},
+        "base_tree": {"$ref": "#/$defs/gitOid"},
+        "head_commit": {"$ref": "#/$defs/gitOid"},
+        "head_tree": {"$ref": "#/$defs/gitOid"}
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "commit", "parents", "title"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^outerlook-[0-9a-f]{7}-[a-z0-9-]+$"},
+          "commit": {"$ref": "#/$defs/gitOid"},
+          "parents": {"type": "array", "minItems": 1, "maxItems": 2, "items": {"$ref": "#/$defs/gitOid"}},
+          "title": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "$defs": {"gitOid": {"type": "string", "pattern": "^[0-9a-f]{40}$"}}
+}

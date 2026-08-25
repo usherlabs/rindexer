@@ -1,0 +1,69 @@
+name: Downstream governance
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_validation:
+        description: Reject pending audit items and validate the recorded release tag
+        required: true
+        default: false
+        type: boolean
+  push:
+    branches:
+      - "fiet/v0.43"
+  pull_request:
+    branches:
+      - "fiet/v0.43"
+
+permissions:
+  contents: read
+
+jobs:
+  governance:
+    name: Downstream governance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate governance JSON schemas
+        run: |
+          npx --yes ajv-cli@5.0.0 validate --spec=draft2020 --strict=true \
+            -s schemas/downstream-patch-inventory.schema.json \
+            -d downstream-patch-inventory.json
+          npx --yes ajv-cli@5.0.0 validate --spec=draft2020 --strict=true \
+            -s schemas/downstream-patches.schema.json \
+            -d downstream-patches.json
+          npx --yes ajv-cli@5.0.0 validate --spec=draft2020 --strict=true \
+            -s schemas/governed-paths.schema.json \
+            -d governed-paths.json
+
+      - name: Run governance regression tests
+        run: >-
+          python3 -m unittest
+          scripts/test_downstream_governance.py
+          scripts/test_canonical_drift.py
+          scripts/test_canonical_contribution.py
+
+      - name: Validate baseline, inventory, ledger, ancestry, and governed paths
+        run: python3 scripts/validate_downstream_governance.py
+
+      - name: Verify protected default release branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .default_branch)" = "fiet/v0.43"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/fiet%2Fv0.43" --jq .protected)" = "true"
+
+      - name: Validate immutable release identity
+        if: ${{ inputs.release_validation }}
+        run: >-
+          python3 scripts/validate_downstream_governance.py
+          --release
+          --verify-tag
+          --release-remote "https://github.com/${GITHUB_REPOSITORY}.git"
