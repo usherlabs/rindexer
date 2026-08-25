@@ -155,11 +155,13 @@
         "Bloom-negative, normal empty-range, callback, atomic batch, file, and reorg paths preserve exact durable ordering before in-memory progress",
         "PoolManager Swap and Wallet ERC20 detail-key fixtures match Maker byte-for-byte",
         "combined candidate filter-alternative detail-key regressions passed after 04bc9029e35aba3216f7669e6cd6e3aabab0b5d3",
+        "callback failure does not poll cursor persistence and a cursor failure remains terminal under 1521039dc38bb5a855d84c99f6101ace64447f2d",
+        "PostgreSQL failure injection: 8 passed, including rollback of inserted rows when exact cursor persistence fails",
         "cargo test -p rindexer --test postgres_atomic_cursor: 8 passed",
         "cargo test -p rindexer --lib: 775 passed, 4 ignored",
         "cargo clippy -p rindexer --all-targets -- -D warnings"
       ],
-      "downstream_commits": ["5796e768e4554783bf7a37e24c97901fe4116aa0", "04bc9029e35aba3216f7669e6cd6e3aabab0b5d3"],
+      "downstream_commits": ["5796e768e4554783bf7a37e24c97901fe4116aa0", "04bc9029e35aba3216f7669e6cd6e3aabab0b5d3", "1521039dc38bb5a855d84c99f6101ace64447f2d"],
       "ancestry_markers": ["FIET-PATCH:outerlook-85b7dad-per-detail-cursors"]
     },
     {
