@@ -1,0 +1,56 @@
+{
+  "binary": {
+    "path": "/tmp/fiet-rindexer-baseline.q5tBO3/repo/target/debug/examples/embedded_lifecycle_probe",
+    "sha256": "295c74be5749f391e37ea5e55a6be02cc3179bbebd2f0755727732c4676167ad"
+  },
+  "configured_health_port": 53601,
+  "created_at": "2026-08-25T10:04:57.700036Z",
+  "errors": [],
+  "runs": [
+    {
+      "caller_signal_observed": true,
+      "drain_outcome": "complete",
+      "engine_completion_observed": true,
+      "engine_signal_handler_observed": false,
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "force_timeout": false,
+      "health_listener_observed": false,
+      "output_sha256": "147b87e95bbf4e42d8c5cd1540cbca32d2a5f4a18fdf0a9f8de54361a5031195",
+      "output_tail": "Logger has already been set up, continuing...\n25 August - 10:04:47.952253  INFO Starting rindexer no code\n25 August - 10:04:47.992794  INFO Networks enabled: anvil\n25 August - 10:04:47.992846  INFO Events registered to index:\n25 August - 10:04:47.993773  INFO Native token transfers to index: anvil\n25 August - 10:04:47.993826  INFO \ud83d\ude80 start_rindexer called with indexing_details.is_some() = true, lifecycle = Embedded\n25 August - 10:04:47.998229  INFO Historical indexing started\n25 August - 10:04:47.998342  INFO Native transfer indexing deferred to live pass to prevent double-spawn\n25 August - 10:04:47.998654  INFO Historical indexing completed - time taken: 0ms\n25 August - 10:04:47.998703  INFO Live indexing started\n25 August - 10:04:47.999367  INFO TraceEvents[anvil]::anvil Starting block number - 0\nFIET_EMBEDDED_CALLER_SIGNAL=SIGTERM\n25 August - 10:04:50.944606  INFO Starting shutdown with 0 active tasks\n25 August - 10:04:50.944700  INFO All active indexing tasks finished shutting down system...\n25 August - 10:04:50.944713  INFO Shutdown complete\nFIET_EMBEDDED_DRAIN=complete\n25 August - 10:04:51.047856  INFO Exiting native transfer indexing block processor!\n25 August - 10:04:51.048041  INFO Native transfer block processor completed because its input channel closed network=anvil\nFIET_EMBEDDED_ENGINE=complete\n",
+      "signal": "SIGTERM"
+    },
+    {
+      "caller_signal_observed": true,
+      "drain_outcome": "complete",
+      "engine_completion_observed": true,
+      "engine_signal_handler_observed": false,
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "force_timeout": false,
+      "health_listener_observed": false,
+      "output_sha256": "e90e3129ee94b963a7741b1aae212f2e4775c114202956a10ac57904d7a77e07",
+      "output_tail": "Logger has already been set up, continuing...\n25 August - 10:04:51.071536  INFO Starting rindexer no code\n25 August - 10:04:51.115271  INFO Networks enabled: anvil\n25 August - 10:04:51.115325  INFO Events registered to index:\n25 August - 10:04:51.115816  INFO Native token transfers to index: anvil\n25 August - 10:04:51.115868  INFO \ud83d\ude80 start_rindexer called with indexing_details.is_some() = true, lifecycle = Embedded\n25 August - 10:04:51.120369  INFO Historical indexing started\n25 August - 10:04:51.120528  INFO Native transfer indexing deferred to live pass to prevent double-spawn\n25 August - 10:04:51.120913  INFO Historical indexing completed - time taken: 0ms\n25 August - 10:04:51.120974  INFO Live indexing started\n25 August - 10:04:51.121953  INFO TraceEvents[anvil]::anvil Starting block number - 0\nFIET_EMBEDDED_CALLER_SIGNAL=SIGINT\n25 August - 10:04:54.061919  INFO Starting shutdown with 0 active tasks\n25 August - 10:04:54.062018  INFO All active indexing tasks finished shutting down system...\n25 August - 10:04:54.062032  INFO Shutdown complete\nFIET_EMBEDDED_DRAIN=complete\n25 August - 10:04:54.166654  INFO Exiting native transfer indexing block processor!\n25 August - 10:04:54.166853  INFO Native transfer block processor completed because its input channel closed network=anvil\nFIET_EMBEDDED_ENGINE=complete\n",
+      "signal": "SIGINT"
+    },
+    {
+      "caller_signal_observed": true,
+      "drain_outcome": "timeout",
+      "engine_completion_observed": false,
+      "engine_signal_handler_observed": false,
+      "exit_code": 42,
+      "expected_exit_code": 42,
+      "force_timeout": true,
+      "health_listener_observed": false,
+      "output_sha256": "4ff24b185746aa65e8e49c1ba3245ac68eaa2e0e1cd33f9fbcaf7b5942d4f1c4",
+      "output_tail": "Logger has already been set up, continuing...\n25 August - 10:04:54.189370  INFO Starting rindexer no code\n25 August - 10:04:54.231140  INFO Networks enabled: anvil\n25 August - 10:04:54.231225  INFO Events registered to index:\n25 August - 10:04:54.231735  INFO Native token transfers to index: anvil\n25 August - 10:04:54.231787  INFO \ud83d\ude80 start_rindexer called with indexing_details.is_some() = true, lifecycle = Embedded\n25 August - 10:04:54.236908  INFO Historical indexing started\n25 August - 10:04:54.237024  INFO Native transfer indexing deferred to live pass to prevent double-spawn\n25 August - 10:04:54.237382  INFO Historical indexing completed - time taken: 0ms\n25 August - 10:04:54.237467  INFO Live indexing started\n25 August - 10:04:54.238337  INFO TraceEvents[anvil]::anvil Starting block number - 0\nFIET_EMBEDDED_CALLER_SIGNAL=SIGTERM\n25 August - 10:04:57.178712  INFO Starting shutdown with 1 active tasks\n25 August - 10:04:57.178813  INFO 1 active indexing tasks pending.. shutting them down gracefully\n25 August - 10:04:57.279792  INFO 1 active indexing tasks pending.. shutting them down gracefully\n25 August - 10:04:57.284727  INFO Exiting native transfer indexing block processor!\n25 August - 10:04:57.284936  INFO Native transfer block processor completed because its input channel closed network=anvil\n25 August - 10:04:57.381210  INFO 1 active indexing tasks pending.. shutting them down gracefully\n25 August - 10:04:57.483200  INFO 1 active indexing tasks pending.. shutting them down gracefully\n25 August - 10:04:57.584588  INFO 1 active indexing tasks pending.. shutting them down gracefully\nFIET_EMBEDDED_DRAIN=timeout\n",
+      "signal": "SIGTERM"
+    }
+  ],
+  "schema_version": "fiet-rindexer-embedded-lifecycle-qualification/v1",
+  "source_under_test": {
+    "commit": "433645830f519303863b20f9bc84405406b4018f",
+    "tree": "4fbaa4aa692345916f5fbcfd002cd139467dab4c"
+  },
+  "verdict": "pass"
+}

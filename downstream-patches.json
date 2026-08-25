@@ -180,10 +180,11 @@
         "characterization/v0.43/vanilla-baseline-receipt.json",
         "characterization observation unexpected_event_stream_eof_returns_success=true",
         "process completion regressions: 6 passed, 0 failed",
+        "process-level unexpected live EOF exits 67 and retains the typed terminal error under c8a22bc4fc4e53be1d06a0cffaf69d655e77b911",
         "requested cancellation, process shutdown, finite runs, and forced historical completion remain successful",
         "cargo clippy -p rindexer --lib -- -D warnings"
       ],
-      "downstream_commits": ["1777b07112d6699a9f78ae271cb6a0ece5ef6703"],
+      "downstream_commits": ["1777b07112d6699a9f78ae271cb6a0ece5ef6703", "c8a22bc4fc4e53be1d06a0cffaf69d655e77b911"],
       "ancestry_markers": ["FIET-PATCH:outerlook-cbb88d2-live-stream-eof"]
     },
     {
@@ -282,6 +283,7 @@
       "upstream": {"status": "planned"},
       "evidence": [
         "qualification/v0.43/embedded-lifecycle-receipt.json",
+        "qualification/v0.43/candidate-embedded-lifecycle-receipt.json",
         "scripts/test_qualify_embedded_lifecycle.py"
       ],
       "downstream_commits": ["fd7c2d7173afee8579f6aa6560d678d334445b73"],
