@@ -1,0 +1,65 @@
+{
+  "schema_version": "fiet-rindexer-vanilla-test-results/v1",
+  "created_at": "2026-08-25T07:02:06Z",
+  "source_under_test": {
+    "canonical_commit": "4f441289b83855c357239d2729fb725a56c3060b",
+    "canonical_root_tree": "80a2698f6be13949d84d920b01c02125af598d09",
+    "runtime_paths_byte_identical_to_canonical": true,
+    "runtime_paths": [
+      "Cargo.toml",
+      "Cargo.lock",
+      "core/Cargo.toml",
+      "core/src"
+    ],
+    "source_receipt": "characterization/v0.43/vanilla-baseline-source-receipt.json",
+    "source_receipt_sha256": "fca0180041950b2db68fcf629c71b756c4cf1ad5adcf124b0489182812461c82"
+  },
+  "toolchain": {
+    "target": "x86_64-unknown-linux-gnu",
+    "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+    "cargo": "cargo 1.97.0 (c980f4866 2026-06-30)",
+    "cargo_nextest": "cargo-nextest 0.9.143 (60fa45f63 2026-08-04)"
+  },
+  "runs": [
+    {
+      "kind": "source_characterization",
+      "command": "python3 -m unittest scripts/test_characterize_v043_baseline.py",
+      "result": "pass",
+      "passed": 6,
+      "failed": 0
+    },
+    {
+      "kind": "strict_clippy",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "result": "pass",
+      "toolchain": "1.97.0"
+    },
+    {
+      "kind": "library_unit_suite",
+      "command": "cargo nextest run -p rindexer --lib",
+      "result": "pass",
+      "nextest_run_id": "042c87c8-a905-46bf-a9fc-bc7332be4fac",
+      "passed": 765,
+      "failed": 0,
+      "skipped": 4,
+      "test_seconds": 58.715
+    },
+    {
+      "kind": "canonical_ci_toolchain_drift_characterization",
+      "command": "GitHub Actions CI workflow_dispatch on exact canonical fiet/v0.43 before toolchain pin",
+      "result": "expected_diagnostic_failure",
+      "workflow_url": "https://github.com/usherlabs/rindexer/actions/runs/32818140552",
+      "toolchain": "stable resolved to Rust 1.98.0",
+      "failure": "12 pre-existing result_large_err diagnostics promoted by -D warnings",
+      "runtime_regression": false
+    }
+  ],
+  "remaining_before_immutable_characterization_receipt": [
+    "full default-feature workspace nextest suite",
+    "full all-features workspace nextest suite",
+    "Docker E2E suite",
+    "process-level lifecycle probes",
+    "failure-injection cursor and callback probes"
+  ],
+  "verdict": "partial_pass"
+}

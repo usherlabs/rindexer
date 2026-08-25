@@ -1,0 +1,270 @@
+{
+  "observations": [
+    {
+      "evidence": [
+        "core/src/start.rs:StartDetails.watch"
+      ],
+      "id": "start_details_requires_watch",
+      "implication": "Maker v0.35 call sites require an explicit v0.43 watch value.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/manifest/global.rs:default_health_port"
+      ],
+      "id": "default_health_port",
+      "implication": "The vanilla listener conflicts with services already using port 8080.",
+      "observed": 8080
+    },
+    {
+      "evidence": [
+        "core/src/start.rs:health_server_handle"
+      ],
+      "id": "rust_indexing_starts_health_listener",
+      "implication": "Maker needs an embedded mode that suppresses this listener.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/start.rs:shutdown_handle"
+      ],
+      "id": "engine_process_signals",
+      "implication": "The vanilla engine owns process signals instead of its embedding caller.",
+      "observed": [
+        "SIGTERM",
+        "SIGINT",
+        "SIGQUIT"
+      ]
+    },
+    {
+      "evidence": [
+        "core/src/start.rs:handle_shutdown"
+      ],
+      "id": "engine_shutdown_calls_exit_zero",
+      "implication": "The engine can overwrite Maker's drain-timeout exit status.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/database/generate.rs:event cursor DDL"
+      ],
+      "id": "event_cursor_primary_key",
+      "implication": "Untouched v0.43 cursor identity is event/network scoped.",
+      "observed": [
+        "network"
+      ]
+    },
+    {
+      "evidence": [
+        "core/src/database/generate.rs:event cursor DDL"
+      ],
+      "id": "event_cursor_has_detail_key",
+      "implication": "Untouched v0.43 cannot represent exact per-manifest-detail coverage.",
+      "observed": false
+    },
+    {
+      "evidence": [
+        "core/src/database/generate.rs:latest_block DDL"
+      ],
+      "id": "latest_block_is_separate_coarse_table",
+      "implication": "latest_block is a network watermark and is not exact event coverage.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/indexer/fetch_logs.rs:live_indexing_stream Bloom branch"
+      ],
+      "id": "bloom_negative_emits_empty_batch",
+      "implication": "Bloom-negative work enters the ordered consumer path without eth_getLogs.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/indexer/process.rs:trigger_event"
+      ],
+      "id": "empty_batch_reaches_cursor_update",
+      "implication": "The v0.43 Bloom path fixes the old in-memory-only empty-block advance, but only at event/network scope.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/indexer/last_synced.rs:update_progress_and_last_synced_task"
+      ],
+      "id": "cursor_write_failure_reaches_caller",
+      "implication": "Cursor persistence failures are logged and completion still advances; exact ordered coverage needs a fallible result.",
+      "observed": false
+    },
+    {
+      "evidence": [
+        "core/src/database/postgres/client.rs:insert_bulk_with_cursor",
+        "core/src/indexer/no_code.rs:atomic_pg_cursor"
+      ],
+      "id": "atomic_postgres_cursor_is_opt_in",
+      "implication": "Only the qualified no-code PostgreSQL raw-row path opts into atomic batch/cursor persistence.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/generator/events_bindings.rs:atomic cursor opt-in hint test"
+      ],
+      "id": "rust_callbacks_are_atomic_by_default",
+      "implication": "Generated/custom Rust callbacks remain at-least-once unless explicitly migrated.",
+      "observed": false
+    },
+    {
+      "evidence": [
+        "core/src/manifest/contract.rs:ContractDetails::indexing_contract_setup",
+        "core/src/event/rindexer_event_filter.rs:new_filter"
+      ],
+      "id": "filter_mode_selects_first_alternative",
+      "implication": "A later filter-mode alternative is silently ignored on untouched v0.43.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/event/rindexer_event_filter.rs:new_address_filter"
+      ],
+      "id": "address_mode_selects_first_matching_alternative",
+      "implication": "Multiple same-event alternatives in one address detail collapse to the first match.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/manifest/contract.rs:EventInputIndexedFilters::into"
+      ],
+      "id": "one_alternative_supports_multi_value_topics",
+      "implication": "Maker's one-entry Swap filter can retain multiple pool IDs in topic1.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/indexer/fetch_logs.rs:retry and live-range tests"
+      ],
+      "id": "retry_boundaries_have_existing_regressions",
+      "implication": "Canonical includes useful range tests, but Outerlook boundary invariants still require audit.",
+      "observed": false
+    },
+    {
+      "evidence": [
+        "core/src/indexer/process.rs:process_event_logs"
+      ],
+      "id": "unexpected_event_stream_eof_returns_success",
+      "implication": "Unexpected live stream EOF is indistinguishable from requested completion.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/indexer/native_transfer.rs:native_transfer_block_processor"
+      ],
+      "id": "native_processor_closed_channel_sleeps",
+      "implication": "Unexpected producer-channel closure does not terminate or fail the processor.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/indexer/native_transfer.rs:native_transfer_block_fetch"
+      ],
+      "id": "native_transfer_supports_bounded_range",
+      "implication": "The engine has explicit bounded historical capability independent of Maker's live-only policy.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/indexer/start.rs:reorg_configs"
+      ],
+      "id": "reorg_absent_is_disabled",
+      "implication": "An omitted reorg_handling mapping creates no coordinator.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/manifest/network.rs:ReorgHandlingConfig"
+      ],
+      "id": "reorg_present_defaults_enabled",
+      "implication": "A present mapping with omitted enabled field activates reorg handling.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/database/generate.rs:generate_postgres_indexer_setup",
+        "core/src/database/postgres/generate.rs:reorg DDL"
+      ],
+      "id": "reorg_internal_relations_are_unconditional",
+      "implication": "Schema migration must inventory reorg relations even while Maker disables runtime handling.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/manifest/network.rs:HypersyncConfig and default test"
+      ],
+      "id": "hypersync_absent_is_disabled",
+      "implication": "Omitting HyperSync preserves direct RPC historical log sourcing.",
+      "observed": true
+    },
+    {
+      "evidence": [
+        "core/src/provider.rs:create_network_providers"
+      ],
+      "id": "hypersync_some_replaces_historical_log_provider",
+      "implication": "Any configured HyperSync value changes the historical getLogs source and needs separate qualification.",
+      "observed": true
+    }
+  ],
+  "required_observation_ids": [
+    "start_details_requires_watch",
+    "default_health_port",
+    "rust_indexing_starts_health_listener",
+    "engine_process_signals",
+    "engine_shutdown_calls_exit_zero",
+    "event_cursor_primary_key",
+    "event_cursor_has_detail_key",
+    "latest_block_is_separate_coarse_table",
+    "bloom_negative_emits_empty_batch",
+    "empty_batch_reaches_cursor_update",
+    "cursor_write_failure_reaches_caller",
+    "atomic_postgres_cursor_is_opt_in",
+    "rust_callbacks_are_atomic_by_default",
+    "filter_mode_selects_first_alternative",
+    "address_mode_selects_first_matching_alternative",
+    "one_alternative_supports_multi_value_topics",
+    "retry_boundaries_have_existing_regressions",
+    "unexpected_event_stream_eof_returns_success",
+    "native_processor_closed_channel_sleeps",
+    "native_transfer_supports_bounded_range",
+    "reorg_absent_is_disabled",
+    "reorg_present_defaults_enabled",
+    "reorg_internal_relations_are_unconditional",
+    "hypersync_absent_is_disabled",
+    "hypersync_some_replaces_historical_log_provider"
+  ],
+  "schema_version": "fiet-rindexer-vanilla-characterization/v1",
+  "source_hashes": {
+    "core/src/database/generate.rs": "165488e6e1f92178117edb838746b0243a8743f2911054de4d2d0b3ccda5df26",
+    "core/src/database/postgres/client.rs": "fd6e30dd9812cfd789aab1e319b8dbd7b2899c9a6c7296ae64f9213e430a9897",
+    "core/src/database/postgres/generate.rs": "38ec992f343bfaf5318668623b974bd9c6dc54c7abdd25fb470e9981a0adfee2",
+    "core/src/event/rindexer_event_filter.rs": "cb6cf40f4fd81ca202ebabe357e11be4fa7188936a67459445ca445dd1acf0e1",
+    "core/src/generator/events_bindings.rs": "4d1624304188e74d2781ef6528c14ed80f7dde2dceea683b501d3fc0c09a15a3",
+    "core/src/indexer/fetch_logs.rs": "a8ec2389090c70d6a428e45ddee35c3485a3837d782928c04707718f227a9efc",
+    "core/src/indexer/last_synced.rs": "7650cd625e7479669581a64171e636664508f112af8fcd6b95107b0da4f8755b",
+    "core/src/indexer/native_transfer.rs": "fdbfa3b9973a49b2cd5d90564370c497e947912228954916ee312d84f5b5b894",
+    "core/src/indexer/no_code.rs": "5968f24e86745b9bdb257170f18ab6f4655891cc9700707a0eac8d1db089bda6",
+    "core/src/indexer/process.rs": "4ce3a7291f212d9fa2cc5c87cca7cd4a5cd0c4b5535b366052fbc608c9bb78f3",
+    "core/src/indexer/start.rs": "65b07bef3096652ecc90b5518ea993bf2e54a0f2f5e3ed02b42f618544603915",
+    "core/src/manifest/contract.rs": "4e1494fd3dfe2f317af4acccb1f98b9e21d50fbd731c852904e2e140983a6241",
+    "core/src/manifest/global.rs": "8d8e90f281c48e645822ae6b228ee37390f41e5ee0dfbdab6e64e8c1c5805026",
+    "core/src/manifest/network.rs": "c0307cb24ed59e46deae525b87e8df069888d01aeff2fd7111c00efe278bd58a",
+    "core/src/provider.rs": "e27bccd236b4c6d229484d71f1c57f08a6f3d158c42650524d81e058ce63d318",
+    "core/src/start.rs": "d1668d305a0e29f6092b8913a64fe6f99a8e58c131ff3c081c0d3bf2d3069c3c"
+  },
+  "source_identity": {
+    "canonical_commit": "4f441289b83855c357239d2729fb725a56c3060b",
+    "canonical_is_ancestor": true,
+    "canonical_repository": "https://github.com/joshstevens19/rindexer",
+    "canonical_root_tree": "80a2698f6be13949d84d920b01c02125af598d09",
+    "canonical_tag": "v0.43.0",
+    "observed_head": "78e2f3acd45550daa5b6116882ee44aaff7750f7",
+    "observed_head_tree": "2c18f5de06a024c357f0d373ee6d007fc8542331",
+    "repository": "https://github.com/usherlabs/rindexer"
+  },
+  "verdict": "characterized"
+}

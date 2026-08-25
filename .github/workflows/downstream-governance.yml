@@ -49,6 +49,12 @@ jobs:
           scripts/test_downstream_governance.py
           scripts/test_canonical_drift.py
           scripts/test_canonical_contribution.py
+          scripts/test_characterize_v043_baseline.py
+
+      - name: Characterize untouched v0.43 source behavior
+        run: >-
+          python3 scripts/characterize_v043_baseline.py
+          --output characterization/v0.43/vanilla-baseline-source-receipt.generated.json
 
       - name: Validate baseline, inventory, ledger, ancestry, and governed paths
         run: python3 scripts/validate_downstream_governance.py
