@@ -527,10 +527,16 @@ pub async fn native_transfer_block_consumer(
             TraceResult::new_block(b, network_name, provider.chain().id(), from_block, to_block)
         })
         .collect::<Vec<_>>();
-    config.trigger_event(blocks).await;
+    if let Err(error) = config.trigger_event(blocks).await {
+        indexing_event_processed();
+        return Err(ProcessEventError::Callback(error));
+    }
 
     if !native_transfers.is_empty() {
-        config.trigger_event(native_transfers).await;
+        if let Err(error) = config.trigger_event(native_transfers).await {
+            indexing_event_processed();
+            return Err(ProcessEventError::Callback(error));
+        }
     }
 
     evm_trace_update_progress_and_last_synced_task(
@@ -538,7 +544,8 @@ pub async fn native_transfer_block_consumer(
         to_block,
         indexing_event_processed,
     )
-    .await;
+    .await
+    .map_err(ProcessEventError::Cursor)?;
 
     Ok(())
 }
@@ -625,10 +632,14 @@ pub async fn native_transfer_block_consumer_debug(
 
     indexing_event_processing();
     if !native_transfers.is_empty() {
-        config.trigger_event(native_transfers).await;
+        if let Err(error) = config.trigger_event(native_transfers).await {
+            indexing_event_processed();
+            return Err(ProcessEventError::Callback(error));
+        }
     }
     evm_trace_update_progress_and_last_synced_task(config, to_block, indexing_event_processed)
-        .await;
+        .await
+        .map_err(ProcessEventError::Cursor)?;
 
     Ok(())
 }

@@ -29,11 +29,13 @@ use crate::{
     database::postgres::client::PostgresConnectionError,
     event::{
         callback_registry::{EventCallbackRegistry, TraceCallbackRegistry},
-        config::{EventProcessingConfig, TraceProcessingConfig},
+        config::{
+            derive_detail_key, EventProcessingConfig, TraceProcessingConfig, LEGACY_DETAIL_KEY,
+        },
     },
     indexer::{
         dependency::ContractEventsDependenciesConfig,
-        last_synced::{get_last_synced_block_number, SyncConfig},
+        last_synced::{get_last_synced_block_number, GetLastSyncedBlockError, SyncConfig},
         native_transfer::{native_transfer_block_fetch, NATIVE_TRANSFER_CONTRACT_NAME},
         process::{
             process_contracts_events_with_dependencies, process_non_blocking_event,
@@ -94,6 +96,9 @@ pub enum StartIndexingError {
 
     #[error("Invalid configuration: {0}")]
     ConfigError(#[from] anyhow::Error),
+
+    #[error("Could not establish exact durable cursor: {0}")]
+    ExactCursor(#[from] GetLastSyncedBlockError),
 }
 
 #[derive(Clone)]
@@ -142,7 +147,7 @@ async fn get_start_end_block(
     }
 
     let last_known_start_block = if manifest_start_block.is_some() {
-        let last_synced_block = get_last_synced_block_number(config).await;
+        let last_synced_block = get_last_synced_block_number(config).await?;
 
         if let Some(value) = last_synced_block {
             let start_from = value + U64::from(1);
@@ -249,6 +254,7 @@ async fn start_indexing_traces(
             contract_name: &first_event.contract_name,
             event_name: &first_event.event_name,
             network: &network_name,
+            detail_key: LEGACY_DETAIL_KEY,
         };
 
         let (block_tx, block_rx) = tokio::sync::mpsc::channel(4096);
@@ -595,6 +601,8 @@ async fn start_indexing_contract_events(
             let dependencies = dependencies.to_vec();
 
             block_tasks.push(async move {
+                let detail_key =
+                    derive_detail_key(&network_contract.indexing_contract_setup, &event.event_name);
                 let config = SyncConfig {
                     project_path: &project_path,
                     postgres: &postgres,
@@ -606,6 +614,7 @@ async fn start_indexing_contract_events(
                     contract_name: &event.contract.name,
                     event_name: &event.event_name,
                     network: &network_contract.network,
+                    detail_key: &detail_key,
                 };
 
                 let result = get_start_end_block(
@@ -1420,6 +1429,7 @@ mod tests {
             contract_name: "test_contract",
             event_name: "test_event",
             network: "ethereum",
+            detail_key: LEGACY_DETAIL_KEY,
         }
     }
 

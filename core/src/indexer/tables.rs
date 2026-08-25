@@ -184,6 +184,7 @@ pub struct ProgressCheckpointConfig {
     pub indexer_name: String,
     pub contract_name: String,
     pub event_name: String,
+    pub detail_key: String,
     pub postgres: Option<Arc<PostgresClient>>,
 }
 
@@ -192,9 +193,10 @@ impl ProgressCheckpointConfig {
         indexer_name: String,
         contract_name: String,
         event_name: String,
+        detail_key: String,
         postgres: Option<Arc<PostgresClient>>,
     ) -> Self {
-        Self { indexer_name, contract_name, event_name, postgres }
+        Self { indexer_name, contract_name, event_name, detail_key, postgres }
     }
 
     /// Save the last synced block for a specific network.
@@ -204,10 +206,10 @@ impl ProgressCheckpointConfig {
             let schema =
                 generate_indexer_contract_schema_name(&self.indexer_name, &self.contract_name);
             let table_name = generate_internal_event_table_name(&schema, &self.event_name);
-            let query = format!(
-                "UPDATE rindexer_internal.{table_name} SET last_synced_block = {block_number} WHERE network = '{network}' AND {block_number} > last_synced_block"
-            );
-            if let Err(e) = postgres.batch_execute(&query).await {
+            if let Err(e) = postgres
+                .advance_detail_cursor(&table_name, network, &self.detail_key, block_number)
+                .await
+            {
                 warn!("Failed to checkpoint progress at block {}: {:?}", block_number, e);
             } else {
                 info!("Checkpointed {}::{} at block {}", self.event_name, network, block_number);
