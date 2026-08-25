@@ -79,6 +79,8 @@ jobs:
     name: Coverage
     runs-on: ubuntu-latest
     needs: [fmt, clippy]
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.0
@@ -99,8 +101,9 @@ jobs:
       - name: Run coverage
         run: cargo llvm-cov nextest -p rindexer -p rindexer_cli --all-features --lcov --output-path lcov.info
       - name: Upload to Codecov
+        if: ${{ env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ env.CODECOV_TOKEN }}
           files: lcov.info
           fail_ci_if_error: true
