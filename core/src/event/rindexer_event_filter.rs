@@ -24,6 +24,9 @@ pub struct SimpleEventFilter {
     pub address: Option<ValueOrArray<Address>>,
     pub topic_id: B256,
     pub topics: [Topic; 4],
+    /// Additional same-event topic alternatives that require separate
+    /// `eth_getLogs` calls because JSON-RPC cannot express OR across positions.
+    pub additional_topics: Vec<[Topic; 4]>,
     pub current_block: U64,
     pub next_block: U64,
 }
@@ -148,6 +151,7 @@ impl RindexerEventFilter {
             topics: index_filter
                 .map(|indexed_filter| indexed_filter.clone().into())
                 .unwrap_or_default(),
+            additional_topics: vec![],
             current_block,
             next_block,
         }))
@@ -155,19 +159,26 @@ impl RindexerEventFilter {
 
     pub fn new_filter(
         topic_id: &B256,
-        _: &str,
+        event_name: &str,
         filter_details: &FilterDetails,
         current_block: U64,
         next_block: U64,
     ) -> Result<RindexerEventFilter, BuildRindexerFilterError> {
+        let mut same_event_topics = filter_details
+            .indexed_filters
+            .iter()
+            .flatten()
+            .filter(|indexed_filter| indexed_filter.event_name == event_name)
+            .cloned()
+            .map(Into::into);
+        let topics = same_event_topics.next().unwrap_or_default();
+        let additional_topics = same_event_topics.collect();
+
         Ok(RindexerEventFilter::Filter(SimpleEventFilter {
             address: None,
             topic_id: *topic_id,
-            topics: filter_details
-                .clone()
-                .indexed_filters
-                .map(|indexed_filter| indexed_filter.clone().into())
-                .unwrap_or_default(),
+            topics,
+            additional_topics,
             current_block,
             next_block,
         }))
@@ -202,6 +213,20 @@ impl RindexerEventFilter {
             RindexerEventFilter::Address(filter) => filter.topics[3].clone(),
             RindexerEventFilter::Filter(filter) => filter.topics[3].clone(),
             RindexerEventFilter::Factory(filter) => filter.topics[3].clone(),
+        }
+    }
+
+    /// Returns the ordered topic alternatives for this event. The first item
+    /// is always present so an event without an indexed filter remains an
+    /// unconstrained `eth_getLogs` query.
+    pub fn topic_sets(&self) -> Vec<[Topic; 4]> {
+        match self {
+            RindexerEventFilter::Address(filter) | RindexerEventFilter::Filter(filter) => {
+                std::iter::once(filter.topics.clone())
+                    .chain(filter.additional_topics.iter().cloned())
+                    .collect()
+            }
+            RindexerEventFilter::Factory(filter) => vec![filter.topics.clone()],
         }
     }
 
@@ -258,6 +283,7 @@ impl RindexerEventFilter {
             address: None,
             topic_id: B256::ZERO,
             topics: Default::default(),
+            additional_topics: vec![],
             current_block: U64::ZERO,
             next_block: U64::ZERO,
         })
@@ -268,6 +294,7 @@ impl RindexerEventFilter {
 mod tests {
     use super::*;
     use crate::event::contract_setup::{AddressDetails, FilterDetails};
+    use crate::manifest::contract::EventInputIndexedFilters;
     use alloy::primitives::{Address, B256, U64};
     use alloy::rpc::types::ValueOrArray;
     use std::str::FromStr;
@@ -278,6 +305,19 @@ mod tests {
 
     fn make_address() -> Address {
         Address::from_str("0xdEADbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF").unwrap()
+    }
+
+    fn indexed_filter(
+        event_name: &str,
+        indexed_1: Option<&str>,
+        indexed_2: Option<&str>,
+    ) -> EventInputIndexedFilters {
+        EventInputIndexedFilters {
+            event_name: event_name.to_string(),
+            indexed_1: indexed_1.map(|value| vec![value.to_string()]),
+            indexed_2: indexed_2.map(|value| vec![value.to_string()]),
+            indexed_3: None,
+        }
     }
 
     // ---- empty_for_test ----
@@ -310,6 +350,7 @@ mod tests {
             address: None,
             topic_id,
             topics: Default::default(),
+            additional_topics: vec![],
             current_block: U64::ZERO,
             next_block: U64::ZERO,
         });
@@ -323,6 +364,7 @@ mod tests {
             address: None,
             topic_id,
             topics: Default::default(),
+            additional_topics: vec![],
             current_block: U64::ZERO,
             next_block: U64::ZERO,
         });
@@ -337,6 +379,7 @@ mod tests {
             address: None,
             topic_id: B256::ZERO,
             topics: Default::default(),
+            additional_topics: vec![],
             current_block: U64::from(42u64),
             next_block: U64::from(100u64),
         });
@@ -349,6 +392,7 @@ mod tests {
             address: None,
             topic_id: B256::ZERO,
             topics: Default::default(),
+            additional_topics: vec![],
             current_block: U64::from(42u64),
             next_block: U64::from(100u64),
         });
@@ -377,6 +421,7 @@ mod tests {
             address: None,
             topic_id: B256::ZERO,
             topics: Default::default(),
+            additional_topics: vec![],
             current_block: U64::ZERO,
             next_block: U64::from(999u64),
         });
@@ -390,6 +435,7 @@ mod tests {
             address: None,
             topic_id: B256::ZERO,
             topics: Default::default(),
+            additional_topics: vec![],
             current_block: U64::from(7u64),
             next_block: U64::ZERO,
         });
@@ -403,6 +449,7 @@ mod tests {
             address: None,
             topic_id: B256::ZERO,
             topics: Default::default(),
+            additional_topics: vec![],
             current_block: U64::ZERO,
             next_block: U64::ZERO,
         });
@@ -438,6 +485,7 @@ mod tests {
             address: Some(ValueOrArray::Value(addr)),
             topic_id: B256::ZERO,
             topics: Default::default(),
+            additional_topics: vec![],
             current_block: U64::ZERO,
             next_block: U64::ZERO,
         });
@@ -454,6 +502,7 @@ mod tests {
             address: Some(ValueOrArray::Array(vec![addr1, addr2])),
             topic_id: B256::ZERO,
             topics: Default::default(),
+            additional_topics: vec![],
             current_block: U64::ZERO,
             next_block: U64::ZERO,
         });
@@ -503,6 +552,60 @@ mod tests {
         )
         .unwrap();
         assert!(f.contract_addresses().await.is_none());
+    }
+
+    #[test]
+    fn new_filter_retains_only_same_event_alternatives_in_order() {
+        let value_a = "0x0000000000000000000000000000000000000000000000000000000000000001";
+        let value_b = "0x0000000000000000000000000000000000000000000000000000000000000002";
+        let filter_details = FilterDetails {
+            events: ValueOrArray::Array(vec!["Transfer".to_string(), "Approval".to_string()]),
+            indexed_filters: Some(vec![
+                indexed_filter("Transfer", Some(value_a), None),
+                indexed_filter("Approval", Some(value_b), None),
+                indexed_filter("Transfer", None, Some(value_b)),
+            ]),
+        };
+
+        let filter = RindexerEventFilter::new_filter(
+            &make_topic_id(),
+            "Transfer",
+            &filter_details,
+            U64::from(1),
+            U64::from(2),
+        )
+        .unwrap();
+        let topic_sets = filter.topic_sets();
+
+        assert_eq!(topic_sets.len(), 2);
+        assert!(!topic_sets[0][1].is_empty());
+        assert!(topic_sets[0][2].is_empty());
+        assert!(topic_sets[1][1].is_empty());
+        assert!(!topic_sets[1][2].is_empty());
+    }
+
+    #[test]
+    fn new_filter_without_a_same_event_alternative_is_unconstrained() {
+        let value = "0x0000000000000000000000000000000000000000000000000000000000000001";
+        let filter_details = FilterDetails {
+            events: ValueOrArray::Value("Transfer".to_string()),
+            indexed_filters: Some(vec![indexed_filter("Approval", Some(value), None)]),
+        };
+
+        let filter = RindexerEventFilter::new_filter(
+            &make_topic_id(),
+            "Transfer",
+            &filter_details,
+            U64::ZERO,
+            U64::ZERO,
+        )
+        .unwrap();
+        let topic_sets = filter.topic_sets();
+
+        assert_eq!(topic_sets.len(), 1);
+        assert!(topic_sets[0][1].is_empty());
+        assert!(topic_sets[0][2].is_empty());
+        assert!(topic_sets[0][3].is_empty());
     }
 
     // ---- new_address_filter ----

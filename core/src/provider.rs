@@ -119,6 +119,28 @@ const DEFAULT_RPC_SUPPORTED_ACCOUNT_FILTERS: usize = 1000;
 /// Maximum RPC batching size available for the provider.
 pub const RPC_CHUNK_SIZE: usize = 1000;
 
+fn merge_filter_logs(filter_results: Vec<Vec<Log>>) -> Vec<Log> {
+    let mut seen = HashSet::new();
+    let mut logs = filter_results.into_iter().flatten().collect::<Vec<_>>();
+
+    logs.retain(|log| match (log.block_hash, log.transaction_hash, log.log_index) {
+        (Some(block_hash), Some(transaction_hash), Some(log_index)) => {
+            seen.insert((block_hash, transaction_hash, log_index))
+        }
+        // An incomplete identity is not safe to collapse. Preserve it so a
+        // malformed provider response cannot silently discard an event.
+        _ => true,
+    });
+    logs.sort_by_key(|log| {
+        (
+            log.block_number.unwrap_or(u64::MAX),
+            log.transaction_index.unwrap_or(u64::MAX),
+            log.log_index.unwrap_or(u64::MAX),
+        )
+    });
+    logs
+}
+
 /// Recommended chunk sizes for batch RPC requests.
 /// See: https://www.alchemy.com/docs/best-practices-when-using-alchemy#2-avoid-high-batch-cardinality
 pub const RECOMMENDED_RPC_CHUNK_SIZE: usize = 50;
@@ -620,44 +642,52 @@ impl JsonRpcCachedProvider {
 
         let addresses = event_filter.contract_addresses().await;
 
-        let base_filter = Filter::new()
-            .event_signature(event_filter.event_signature())
-            .topic1(event_filter.topic1())
-            .topic2(event_filter.topic2())
-            .topic3(event_filter.topic3())
-            .from_block(event_filter.from_block())
-            .to_block(event_filter.to_block());
+        let logs: Result<Vec<Log>, ProviderError> = async {
+            if addresses.as_ref().is_some_and(HashSet::is_empty) {
+                // Different RPC providers interpret an empty address array
+                // differently, so an explicitly empty set always means no events.
+                return Ok(vec![]);
+            }
 
-        let logs = match addresses {
-            // no addresses, which means nothing to get
-            // different rpc providers implement an empty array differently,
-            // therefore, we assume an empty addresses array means no events to fetch
-            Some(addresses) if addresses.is_empty() => Ok(vec![]),
-            Some(addresses) => match self.address_filtering {
-                Some(AddressFiltering::InMemory) => {
-                    self.get_logs_for_address_in_memory(&base_filter, addresses).await
-                }
-                Some(AddressFiltering::MaxAddressPerGetLogsRequest(
-                    max_address_per_get_logs_request,
-                )) => {
-                    self.get_logs_for_address_in_batches(
-                        &base_filter,
-                        addresses,
-                        max_address_per_get_logs_request,
-                    )
-                    .await
-                }
-                None => {
-                    self.get_logs_for_address_in_batches(
-                        &base_filter,
-                        addresses,
-                        DEFAULT_RPC_SUPPORTED_ACCOUNT_FILTERS,
-                    )
-                    .await
-                }
-            },
-            None => Ok(self.provider.get_logs(&base_filter).await?),
-        };
+            let mut filter_results = Vec::new();
+            for topics in event_filter.topic_sets() {
+                let filter = Filter::new()
+                    .event_signature(event_filter.event_signature())
+                    .topic1(topics[1].clone())
+                    .topic2(topics[2].clone())
+                    .topic3(topics[3].clone())
+                    .from_block(event_filter.from_block())
+                    .to_block(event_filter.to_block());
+
+                let result = match addresses.as_ref() {
+                    Some(addresses) => match self.address_filtering {
+                        Some(AddressFiltering::InMemory) => {
+                            self.get_logs_for_address_in_memory(&filter, addresses.clone()).await
+                        }
+                        Some(AddressFiltering::MaxAddressPerGetLogsRequest(chunk_size)) => {
+                            self.get_logs_for_address_in_batches(
+                                &filter,
+                                addresses.clone(),
+                                chunk_size,
+                            )
+                            .await
+                        }
+                        None => {
+                            self.get_logs_for_address_in_batches(
+                                &filter,
+                                addresses.clone(),
+                                DEFAULT_RPC_SUPPORTED_ACCOUNT_FILTERS,
+                            )
+                            .await
+                        }
+                    },
+                    None => Ok(self.provider.get_logs(&filter).await?),
+                }?;
+                filter_results.push(result);
+            }
+            Ok(merge_filter_logs(filter_results))
+        }
+        .await;
 
         // Record RPC metrics
         let duration = start.elapsed().as_secs_f64();
@@ -1348,6 +1378,91 @@ pub fn get_network_provider<'a>(
 mod tests {
     use super::mock::MockChainProvider;
     use super::*;
+    use crate::event::contract_setup::FilterDetails;
+    use crate::manifest::contract::EventInputIndexedFilters;
+
+    fn make_log(
+        identity: u8,
+        block_number: Option<u64>,
+        transaction_index: Option<u64>,
+        log_index: Option<u64>,
+    ) -> Log {
+        Log {
+            inner: alloy::primitives::Log::default(),
+            block_hash: Some(alloy::primitives::B256::repeat_byte(identity)),
+            block_number,
+            block_timestamp: None,
+            transaction_hash: Some(alloy::primitives::B256::repeat_byte(identity)),
+            transaction_index,
+            log_index,
+            removed: false,
+        }
+    }
+
+    #[test]
+    fn multiple_filter_results_are_deduplicated_and_chain_ordered() {
+        let earlier = make_log(1, Some(10), Some(2), Some(3));
+        let later = make_log(2, Some(11), Some(0), Some(0));
+
+        let merged = merge_filter_logs(vec![vec![later.clone(), earlier.clone()], vec![earlier]]);
+
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].transaction_hash, Some(alloy::primitives::B256::repeat_byte(1)));
+        assert_eq!(merged[1].transaction_hash, later.transaction_hash);
+    }
+
+    #[test]
+    fn multiple_filter_results_do_not_deduplicate_incomplete_log_identities() {
+        let mut first = make_log(3, Some(12), Some(0), Some(1));
+        first.transaction_hash = None;
+        let second = first.clone();
+
+        let merged = merge_filter_logs(vec![vec![first], vec![second]]);
+
+        assert_eq!(merged.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn rpc_provider_queries_every_same_event_filter_alternative() {
+        let value_a = "0x0000000000000000000000000000000000000000000000000000000000000001";
+        let value_b = "0x0000000000000000000000000000000000000000000000000000000000000002";
+        let details = FilterDetails {
+            events: ValueOrArray::Value("Transfer".to_string()),
+            indexed_filters: Some(vec![
+                EventInputIndexedFilters {
+                    event_name: "Transfer".to_string(),
+                    indexed_1: Some(vec![value_a.to_string()]),
+                    indexed_2: None,
+                    indexed_3: None,
+                },
+                EventInputIndexedFilters {
+                    event_name: "Transfer".to_string(),
+                    indexed_1: None,
+                    indexed_2: Some(vec![value_b.to_string()]),
+                    indexed_3: None,
+                },
+            ]),
+        };
+        let filter = RindexerEventFilter::new_filter(
+            &alloy::primitives::B256::repeat_byte(9),
+            "Transfer",
+            &details,
+            U64::from(1),
+            U64::from(2),
+        )
+        .unwrap();
+        let first = make_log(4, Some(2), Some(0), Some(1));
+        let second = make_log(5, Some(1), Some(0), Some(0));
+        let (provider, asserter) = JsonRpcCachedProvider::mock_with_asserter(1);
+        asserter.push_success(&vec![first]);
+        asserter.push_success(&vec![second.clone()]);
+
+        let logs = provider.get_logs(&filter).await.unwrap();
+
+        assert!(asserter.read_q().is_empty(), "both filter queries must be consumed");
+        assert_eq!(logs.len(), 2);
+        assert_eq!(logs[0].transaction_hash, second.transaction_hash);
+    }
 
     #[test]
     fn mock_chain_provider_defaults() {
