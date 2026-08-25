@@ -13,6 +13,13 @@ python3 scripts/characterize_v043_baseline.py \
   --output characterization/v0.43/vanilla-baseline-source-receipt.json
 cargo test --locked \
   --manifest-path characterization/v0.43/public-api-probe/Cargo.toml
+cargo build -p rindexer_cli
+# Restore canonical Cargo.lock after Cargo normalizes stale workspace-package versions.
+git restore --source=HEAD -- Cargo.lock
+python3 scripts/characterize_v043_process.py \
+  --binary target/debug/rindexer_cli \
+  --anvil "$(command -v anvil)" \
+  --output characterization/v0.43/vanilla-baseline-process-receipt.json
 ```
 
 The retained source receipt is diagnostic, not a release receipt. It records
