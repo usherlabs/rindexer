@@ -27,8 +27,10 @@
     "schemas/governed-paths.schema.json",
     "scripts/report_canonical_drift.py",
     "scripts/characterize_v043_baseline.py",
+    "scripts/characterize_v043_process.py",
     "scripts/test_canonical_contribution.py",
     "scripts/test_characterize_v043_baseline.py",
+    "scripts/test_characterize_v043_process.py",
     "scripts/test_canonical_drift.py",
     "scripts/test_downstream_governance.py",
     "scripts/validate_downstream_governance.py",
@@ -37,6 +39,7 @@
     "characterization/v0.43/public-api-probe/Cargo.toml",
     "characterization/v0.43/public-api-probe/Cargo.lock",
     "characterization/v0.43/public-api-probe/tests/vanilla.rs",
+    "characterization/v0.43/vanilla-baseline-process-receipt.json",
     "characterization/v0.43/vanilla-baseline-source-receipt.json",
     "characterization/v0.43/vanilla-baseline-test-results.json",
     "rust-toolchain.toml"

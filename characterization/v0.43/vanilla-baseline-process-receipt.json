@@ -1,0 +1,117 @@
+{
+  "binary": {
+    "path": "target/debug/rindexer_cli",
+    "sha256": "d5ac4c8051291a59a9f8940ae41022fc3aaf453bbf67ed5089c774454e93cd00"
+  },
+  "created_at": "2026-08-25T07:25:26.354300Z",
+  "environment": {
+    "anvil_chain_id": 31337,
+    "anvil_version": "anvil Version: 1.4.2-v1.4.2",
+    "cargo": "cargo 1.97.0 (c980f4866 2026-06-30)",
+    "health_port": 8080,
+    "os": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)"
+  },
+  "errors": [],
+  "invocation": {
+    "arguments": [
+      "start",
+      "indexer"
+    ],
+    "watch_argument_present": false
+  },
+  "runs": [
+    {
+      "default_health_listener_observed": true,
+      "engine_forced_zero_exit_observed": true,
+      "engine_signal_handler_observed": true,
+      "exit_code": 0,
+      "graceful_completion_observed": true,
+      "health_payload": {
+        "indexing": {
+          "active_tasks": 0,
+          "is_running": true
+        },
+        "services": {
+          "database": "disabled",
+          "indexing": "healthy",
+          "sync": "nodata"
+        },
+        "status": "healthy",
+        "timestamp": "2026-08-25T07:25:26.124583797+00:00"
+      },
+      "health_port_released_after_exit": true,
+      "output_sha256": "6ee79a65976859b8f431f133d2d48936c16127a087cea6d38305fbe653a9df80",
+      "signal": "SIGTERM",
+      "watch_disabled_observed": true
+    },
+    {
+      "default_health_listener_observed": true,
+      "engine_forced_zero_exit_observed": true,
+      "engine_signal_handler_observed": true,
+      "exit_code": 0,
+      "graceful_completion_observed": true,
+      "health_payload": {
+        "indexing": {
+          "active_tasks": 0,
+          "is_running": true
+        },
+        "services": {
+          "database": "disabled",
+          "indexing": "healthy",
+          "sync": "nodata"
+        },
+        "status": "healthy",
+        "timestamp": "2026-08-25T07:25:26.232881018+00:00"
+      },
+      "health_port_released_after_exit": true,
+      "output_sha256": "23f30ff903d5db634b8d44dc165729fc985f685d2fc0fa8d4125806587958f4e",
+      "signal": "SIGINT",
+      "watch_disabled_observed": true
+    },
+    {
+      "default_health_listener_observed": true,
+      "engine_forced_zero_exit_observed": true,
+      "engine_signal_handler_observed": true,
+      "exit_code": 0,
+      "graceful_completion_observed": true,
+      "health_payload": {
+        "indexing": {
+          "active_tasks": 0,
+          "is_running": true
+        },
+        "services": {
+          "database": "disabled",
+          "indexing": "healthy",
+          "sync": "nodata"
+        },
+        "status": "healthy",
+        "timestamp": "2026-08-25T07:25:26.340584657+00:00"
+      },
+      "health_port_released_after_exit": true,
+      "output_sha256": "ce3a5bad5ad21eb2bb1dab68927fd3a19b7d594ce594b53240aa24bd70a55b8d",
+      "signal": "SIGQUIT",
+      "watch_disabled_observed": true
+    }
+  ],
+  "schema_version": "fiet-rindexer-v043-process-characterization/v1",
+  "source_bound_observations": {
+    "drain_failure_cannot_control_process_exit": true,
+    "health_listener_spawned_when_indexing_details_is_some": true,
+    "shutdown_handler_calls_process_exit_zero": true,
+    "start_details_requires_watch": true,
+    "unix_handlers": [
+      "SIGTERM",
+      "SIGINT",
+      "SIGQUIT"
+    ]
+  },
+  "source_under_test": {
+    "canonical_commit": "4f441289b83855c357239d2729fb725a56c3060b",
+    "canonical_root_tree": "80a2698f6be13949d84d920b01c02125af598d09",
+    "observed_head": "2e11f9c4da9ffa4a57fe620a0b0e2afbc696edcd",
+    "observed_head_tree": "2fc68d1f10165b31de1a82954f45d244a59978c4",
+    "runtime_paths_byte_identical_to_canonical": true
+  },
+  "verdict": "pass"
+}
