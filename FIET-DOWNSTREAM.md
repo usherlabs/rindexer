@@ -44,6 +44,15 @@ python3 scripts/validate_downstream_governance.py --release --verify-tag
 
 Qualified tags use `fiet-v<canonical-version>-<revision>`, beginning with `fiet-v0.43.0-1`. A tag is never retargeted. A failed release keeps its exact tag, commit, tree, ledger, and test evidence for forensic comparison.
 
+## Qualification toolchain
+
+Downstream CI and release workflows use the exact Rust toolchain recorded in
+`rust-toolchain.toml`. The v0.43 line is pinned to Rust 1.97.0. Untouched
+v0.43 passes its strict Clippy gate on that toolchain; Rust 1.98 introduces
+`result_large_err` diagnostics for existing public error types when CI enables
+`-D warnings`. A toolchain update therefore requires its own non-behavioral CI
+qualification instead of silently changing the release gate.
+
 ## Canonical drift and contributions
 
 The scheduled canonical drift workflow is read-only. It reports newer releases, identities, changed paths, and possible patch absorption without creating or changing branches, pull requests, tags, or deployments.
