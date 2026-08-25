@@ -48,7 +48,7 @@
       "kind": "public_api_semantics",
       "command": "cargo test --locked --manifest-path characterization/v0.43/public-api-probe/Cargo.toml",
       "result": "pass",
-      "passed": 5,
+      "passed": 6,
       "failed": 0,
       "dependency_baseline": "canonical Cargo.lock Alloy 2.0.4"
     },
