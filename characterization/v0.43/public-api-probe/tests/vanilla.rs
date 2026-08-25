@@ -75,9 +75,7 @@ fn filter_mode_contract_detail_collapses_alternatives_to_the_first_entry() {
     let detail = ContractDetails {
         network: "local".to_string(),
         address: None,
-        filter: Some(ValueOrArray::Value(FilterDetailsYaml {
-            event_name: "Transfer".to_string(),
-        })),
+        filter: Some(ValueOrArray::Value(FilterDetailsYaml { event_name: "Transfer".to_string() })),
         indexed_filters: Some(vec![
             alternative("Transfer", &["1"]),
             alternative("Transfer", &["2"]),
@@ -131,10 +129,9 @@ fn one_indexed_filter_entry_preserves_every_topic_value() {
 fn health_reorg_and_hypersync_defaults_are_observable_through_public_types() {
     assert_eq!(Global::default().health_port, 8080);
 
-    let absent: Network = serde_yaml::from_str(
-        "name: local\nchain_id: 31337\nrpc: http://127.0.0.1:8545\n",
-    )
-    .expect("minimal network should deserialize");
+    let absent: Network =
+        serde_yaml::from_str("name: local\nchain_id: 31337\nrpc: http://127.0.0.1:8545\n")
+            .expect("minimal network should deserialize");
     assert!(absent.reorg_handling.is_none());
     assert!(absent.hypersync.is_none());
 

@@ -1,6 +1,6 @@
 {
   "schema_version": "fiet-rindexer-vanilla-test-results/v1",
-  "created_at": "2026-08-25T07:25:01Z",
+  "created_at": "2026-08-25T07:34:49Z",
   "source_under_test": {
     "canonical_commit": "4f441289b83855c357239d2729fb725a56c3060b",
     "canonical_root_tree": "80a2698f6be13949d84d920b01c02125af598d09",
@@ -67,6 +67,23 @@
       "receipt_sha256": "c6e9909fb061d80fa50c26dcfc183e75d6074f15dc31a677e01e806aff7c8027"
     },
     {
+      "kind": "postgres_atomic_cursor_failure_injection",
+      "command": "cargo nextest run -p rindexer --test postgres_atomic_cursor",
+      "result": "pass",
+      "nextest_run_id": "b5d80fbe-8498-44ab-88c0-c6976d3bc6ec",
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "kind": "legacy_rust_callback_crash_window",
+      "command": "cargo test --locked --manifest-path characterization/v0.43/public-api-probe/Cargo.toml --test legacy_callback",
+      "result": "pass",
+      "passed": 1,
+      "failed": 0,
+      "receipt": "characterization/v0.43/vanilla-baseline-failure-injection-receipt.json",
+      "receipt_sha256": "3b28576ea9fa583b931972472ae5070abc828077a492bb9ff8d75813507c6158"
+    },
+    {
       "kind": "canonical_ci_toolchain_drift_characterization",
       "command": "GitHub Actions CI workflow_dispatch on exact canonical fiet/v0.43 before toolchain pin",
       "result": "expected_diagnostic_failure",
@@ -79,8 +96,7 @@
   "remaining_before_immutable_characterization_receipt": [
     "full default-feature workspace nextest suite",
     "full all-features workspace nextest suite",
-    "Docker E2E suite",
-    "failure-injection cursor and callback probes"
+    "Docker E2E suite"
   ],
   "verdict": "partial_pass"
 }

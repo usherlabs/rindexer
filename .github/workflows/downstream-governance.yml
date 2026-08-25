@@ -61,6 +61,14 @@ jobs:
           cargo test
           --locked
           --manifest-path characterization/v0.43/public-api-probe/Cargo.toml
+          --test vanilla
+
+      - name: Run untouched v0.43 callback crash-window probe
+        run: >-
+          cargo test
+          --locked
+          --manifest-path characterization/v0.43/public-api-probe/Cargo.toml
+          --test legacy_callback
 
       - name: Install Foundry for process characterization
         uses: foundry-rs/foundry-toolchain@v1

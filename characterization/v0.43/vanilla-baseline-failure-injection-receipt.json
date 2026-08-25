@@ -1,0 +1,79 @@
+{
+  "schema_version": "fiet-rindexer-v043-failure-characterization/v1",
+  "created_at": "2026-08-25T07:34:49Z",
+  "source_under_test": {
+    "canonical_commit": "4f441289b83855c357239d2729fb725a56c3060b",
+    "canonical_root_tree": "80a2698f6be13949d84d920b01c02125af598d09",
+    "runtime_paths_byte_identical_to_canonical": true,
+    "source_receipt": {
+      "path": "characterization/v0.43/vanilla-baseline-source-receipt.json",
+      "sha256": "fca0180041950b2db68fcf629c71b756c4cf1ad5adcf124b0489182812461c82"
+    },
+    "process_receipt": {
+      "path": "characterization/v0.43/vanilla-baseline-process-receipt.json",
+      "sha256": "c6e9909fb061d80fa50c26dcfc183e75d6074f15dc31a677e01e806aff7c8027"
+    }
+  },
+  "runs": [
+    {
+      "kind": "postgres_atomic_cursor_failure_injection",
+      "command": "cargo nextest run -p rindexer --test postgres_atomic_cursor",
+      "nextest_run_id": "b5d80fbe-8498-44ab-88c0-c6976d3bc6ec",
+      "result": "pass",
+      "passed": 3,
+      "failed": 0,
+      "test_source": "core/tests/postgres_atomic_cursor.rs",
+      "test_source_sha256": "4ccca6d33936d86d3f5a8295ae06bcdef6f0f75efc9b128dc5aee4cae3186f51",
+      "proved": [
+        "event rows and network cursor commit atomically on explicit opt-in",
+        "a failed cursor update rolls back the event batch",
+        "a missing cursor row rolls back the event batch",
+        "an already-ahead cursor remains monotonic"
+      ]
+    },
+    {
+      "kind": "legacy_rust_callback_crash_window",
+      "command": "cargo test --locked --manifest-path characterization/v0.43/public-api-probe/Cargo.toml --test legacy_callback",
+      "result": "pass",
+      "passed": 1,
+      "failed": 0,
+      "test_source": "characterization/v0.43/public-api-probe/tests/legacy_callback.rs",
+      "test_source_sha256": "5eeae88775297366d275cdb5f4a41f13779d1dd55efff3efcddda7ec80d19928",
+      "injected_boundary": "callback persistence succeeds and the process is discarded before cursor update",
+      "observed": {
+        "cursor_after_restart": 0,
+        "non_idempotent_rows_after_redelivery": 2,
+        "idempotent_rows_after_redelivery": 1
+      }
+    }
+  ],
+  "source_bound_gaps": [
+    {
+      "id": "network_only_cursor_identity",
+      "observed": true,
+      "meaning": "vanilla event coverage is keyed only by network and has no detail_key"
+    },
+    {
+      "id": "legacy_rust_callbacks_are_not_atomic_by_default",
+      "observed": true,
+      "meaning": "custom Rust callback persistence and the engine cursor advance remain separate commits"
+    },
+    {
+      "id": "cursor_write_failure_is_swallowed",
+      "observed": true,
+      "meaning": "the legacy async cursor path logs database failure and still invokes on_complete"
+    },
+    {
+      "id": "atomic_api_is_opt_in_and_empty_batches_are_no_op",
+      "observed": true,
+      "meaning": "insert_bulk_with_cursor protects opted-in non-empty PostgreSQL batches; it does not itself advance empty ranges or custom callbacks"
+    }
+  ],
+  "source_path_sha256": {
+    "core/src/indexer/last_synced.rs": "7650cd625e7479669581a64171e636664508f112af8fcd6b95107b0da4f8755b",
+    "core/src/indexer/no_code.rs": "5968f24e86745b9bdb257170f18ab6f4655891cc9700707a0eac8d1db089bda6",
+    "core/src/indexer/process.rs": "4ce3a7291f212d9fa2cc5c87cca7cd4a5cd0c4b5535b366052fbc608c9bb78f3"
+  },
+  "verdict": "characterized_with_required_downstream_gaps",
+  "release_authorized": false
+}
