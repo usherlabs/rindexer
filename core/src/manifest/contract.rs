@@ -136,13 +136,13 @@ impl ContractDetails {
             match filter {
                 ValueOrArray::Value(filter) => IndexingContractSetup::Filter(FilterDetails {
                     events: ValueOrArray::Value(filter.event_name.clone()),
-                    indexed_filters: self.indexed_filters.as_ref().and_then(|f| f.first().cloned()),
+                    indexed_filters: self.indexed_filters.clone(),
                 }),
                 ValueOrArray::Array(filters) => IndexingContractSetup::Filter(FilterDetails {
                     events: ValueOrArray::Array(
                         filters.iter().map(|f| f.event_name.clone()).collect(),
                     ),
-                    indexed_filters: self.indexed_filters.as_ref().and_then(|f| f.first().cloned()),
+                    indexed_filters: self.indexed_filters.clone(),
                 }),
             }
         } else {
@@ -1505,6 +1505,30 @@ mod tests {
     use serde_yaml;
 
     use super::*;
+
+    #[test]
+    fn filter_mode_setup_preserves_every_indexed_filter() {
+        let details: ContractDetails = serde_yaml::from_str(
+            r#"
+            network: ethereum
+            filter:
+              event_name: Transfer
+            indexed_filters:
+              - event_name: Transfer
+                indexed_1: ["0x01"]
+              - event_name: Transfer
+                indexed_2: ["0x02"]
+            "#,
+        )
+        .unwrap();
+
+        let setup = details.indexing_contract_setup(Path::new("."));
+        let IndexingContractSetup::Filter(filter) = setup else {
+            panic!("expected filter-mode setup");
+        };
+
+        assert_eq!(filter.indexed_filters.unwrap().len(), 2);
+    }
 
     #[test]
     fn is_factory_only_event_false_for_plain_address_contract() {
