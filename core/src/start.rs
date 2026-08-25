@@ -52,6 +52,52 @@ pub struct StartDetails<'a> {
     pub watch: bool,
 }
 
+// FIET-PATCH:maker-controlled-embedded-lifecycle
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LifecycleMode {
+    Process,
+    Embedded,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EmbeddedConfigurationError {
+    Watch,
+    Graphql,
+}
+
+impl LifecycleMode {
+    fn installs_process_signal_handlers(self) -> bool {
+        matches!(self, Self::Process)
+    }
+
+    fn starts_health_listener(self) -> bool {
+        matches!(self, Self::Process)
+    }
+
+    fn validate(
+        self,
+        watch: bool,
+        graphql_enabled: bool,
+    ) -> Result<(), EmbeddedConfigurationError> {
+        if self == Self::Embedded && watch {
+            return Err(EmbeddedConfigurationError::Watch);
+        }
+        if self == Self::Embedded && graphql_enabled {
+            return Err(EmbeddedConfigurationError::Graphql);
+        }
+        Ok(())
+    }
+}
+
+impl From<EmbeddedConfigurationError> for StartRindexerError {
+    fn from(error: EmbeddedConfigurationError) -> Self {
+        match error {
+            EmbeddedConfigurationError::Watch => Self::EmbeddedWatchNotSupported,
+            EmbeddedConfigurationError::Graphql => Self::EmbeddedGraphqlNotSupported,
+        }
+    }
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum StartRindexerError {
     #[error("Could not work out project path from the parent of the manifest")]
@@ -103,8 +149,16 @@ pub enum StartRindexerError {
 
     #[error("Reth CLI error: {0}")]
     RethCliError(#[from] Box<dyn std::error::Error>),
+
+    #[error("embedded lifecycle requires watch=false")]
+    EmbeddedWatchNotSupported,
+
+    #[error("embedded lifecycle requires GraphQL to be disabled")]
+    EmbeddedGraphqlNotSupported,
 }
 
+/// Canonical standalone-process shutdown path. Embedded callers never install
+/// this handler and therefore retain ownership of their process exit status.
 async fn handle_shutdown(signal: &str) {
     // Mark shutdown state only once, at the very beginning of the shutdown process
     mark_shutdown_started();
@@ -118,41 +172,68 @@ async fn handle_shutdown(signal: &str) {
 }
 
 pub async fn start_rindexer(details: StartDetails<'_>) -> Result<(), StartRindexerError> {
+    start_rindexer_with_lifecycle(details, LifecycleMode::Process).await
+}
+
+/// Run rindexer inside a caller-owned service process.
+///
+/// This entry point installs no process signal handlers, starts no rindexer
+/// health listener, rejects hot reload and GraphQL, and returns its terminal
+/// result to the caller. The embedding service owns SIGTERM/SIGINT, calls
+/// [`crate::initiate_shutdown`] under its own deadline, records timeout
+/// evidence, and chooses the final process exit status.
+pub async fn start_rindexer_embedded(details: StartDetails<'_>) -> Result<(), StartRindexerError> {
+    start_rindexer_with_lifecycle(details, LifecycleMode::Embedded).await
+}
+
+async fn start_rindexer_with_lifecycle(
+    details: StartDetails<'_>,
+    lifecycle: LifecycleMode,
+) -> Result<(), StartRindexerError> {
+    lifecycle.validate(details.watch, details.graphql_details.enabled)?;
     info!(
-        "🚀 start_rindexer called with indexing_details.is_some() = {}",
-        details.indexing_details.is_some()
+        "🚀 start_rindexer called with indexing_details.is_some() = {}, lifecycle = {:?}",
+        details.indexing_details.is_some(),
+        lifecycle,
     );
     let project_path = details.manifest_path.parent();
 
     match project_path {
         Some(project_path) => {
-            #[cfg(unix)]
-            let shutdown_handle = {
-                let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
-                    .map_err(|e| StartRindexerError::ShutdownHandlerFailed(e.to_string()))?;
-                let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
-                    .map_err(|e| StartRindexerError::ShutdownHandlerFailed(e.to_string()))?;
-                let mut sigquit = signal::unix::signal(signal::unix::SignalKind::quit())
-                    .map_err(|e| StartRindexerError::ShutdownHandlerFailed(e.to_string()))?;
+            let shutdown_handle = if lifecycle.installs_process_signal_handlers() {
+                #[cfg(unix)]
+                {
+                    let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
+                        .map_err(|e| {
+                        StartRindexerError::ShutdownHandlerFailed(e.to_string())
+                    })?;
+                    let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
+                        .map_err(|e| StartRindexerError::ShutdownHandlerFailed(e.to_string()))?;
+                    let mut sigquit = signal::unix::signal(signal::unix::SignalKind::quit())
+                        .map_err(|e| StartRindexerError::ShutdownHandlerFailed(e.to_string()))?;
 
-                tokio::spawn(async move {
-                    tokio::select! {
-                        _ = sigterm.recv() => handle_shutdown("SIGTERM").await,
-                        _ = sigint.recv() => handle_shutdown("SIGINT (Ctrl+C)").await,
-                        _ = sigquit.recv() => handle_shutdown("SIGQUIT").await,
-                    }
-                })
-            };
-
-            // On Windows, we just use Ctrl+C to trigger shutdown
-            #[cfg(windows)]
-            let shutdown_handle = tokio::spawn(async move {
-                if let Err(e) = signal::ctrl_c().await {
-                    error!("Failed to register Ctrl+C handler: {}", e);
-                    panic!("Ctrl+C handler failed: {}", e);
+                    Some(tokio::spawn(async move {
+                        tokio::select! {
+                            _ = sigterm.recv() => handle_shutdown("SIGTERM").await,
+                            _ = sigint.recv() => handle_shutdown("SIGINT (Ctrl+C)").await,
+                            _ = sigquit.recv() => handle_shutdown("SIGQUIT").await,
+                        }
+                    }))
                 }
-                handle_shutdown("Ctrl+C").await
-            });
+
+                #[cfg(windows)]
+                {
+                    Some(tokio::spawn(async move {
+                        if let Err(e) = signal::ctrl_c().await {
+                            error!("Failed to register Ctrl+C handler: {}", e);
+                            panic!("Ctrl+C handler failed: {}", e);
+                        }
+                        handle_shutdown("Ctrl+C").await
+                    }))
+                }
+            } else {
+                None
+            };
 
             let manifest = Arc::new(read_manifest(details.manifest_path)?);
 
@@ -206,7 +287,9 @@ pub async fn start_rindexer(details: StartDetails<'_>) -> Result<(), StartRindex
             }
 
             // Health server follows the indexer lifecycle - only runs when indexer is running
-            let health_server_handle = if details.indexing_details.is_some() {
+            let health_server_handle = if lifecycle.starts_health_listener()
+                && details.indexing_details.is_some()
+            {
                 let manifest_clone = Arc::clone(&manifest);
 
                 Some(tokio::spawn(async move {
@@ -377,6 +460,18 @@ pub async fn start_rindexer(details: StartDetails<'_>) -> Result<(), StartRindex
                 return Ok(());
             }
 
+            // Live indexing has returned. Embedded callers observe this result
+            // directly; they never wait on an engine-owned signal or listener.
+            if lifecycle == LifecycleMode::Embedded {
+                return Ok(());
+            }
+
+            let shutdown_handle = shutdown_handle.ok_or_else(|| {
+                StartRindexerError::ShutdownHandlerFailed(
+                    "standalone lifecycle did not install a shutdown handler".to_string(),
+                )
+            })?;
+
             match (graphql_server_handle, health_server_handle, shutdown_handle) {
                 (Some(graphql_handle), Some(health_handle), shutdown_handle) => {
                     info!("Waiting on GraphQL server, health server, and shutdown signal...");
@@ -472,4 +567,49 @@ pub async fn start_rindexer_no_code(
     let start_details = setup_no_code(details).await?;
 
     start_rindexer(start_details).await.map_err(StartRindexerNoCode::StartRindexerError)
+}
+
+/// No-code setup with the same caller-owned lifecycle guarantees as
+/// [`start_rindexer_embedded`].
+pub async fn start_rindexer_no_code_embedded(
+    details: StartNoCodeDetails<'_>,
+) -> Result<(), StartRindexerNoCode> {
+    LifecycleMode::Embedded
+        .validate(details.watch, details.graphql_details.enabled)
+        .map_err(StartRindexerError::from)
+        .map_err(StartRindexerNoCode::StartRindexerError)?;
+    let start_details = setup_no_code(details).await?;
+
+    start_rindexer_embedded(start_details).await.map_err(StartRindexerNoCode::StartRindexerError)
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::{EmbeddedConfigurationError, LifecycleMode};
+
+    #[test]
+    fn embedded_policy_owns_neither_signals_nor_health() {
+        assert!(!LifecycleMode::Embedded.installs_process_signal_handlers());
+        assert!(!LifecycleMode::Embedded.starts_health_listener());
+        assert!(LifecycleMode::Embedded.validate(false, false).is_ok());
+    }
+
+    #[test]
+    fn embedded_policy_rejects_watch_and_graphql() {
+        assert!(matches!(
+            LifecycleMode::Embedded.validate(true, false),
+            Err(EmbeddedConfigurationError::Watch)
+        ));
+        assert!(matches!(
+            LifecycleMode::Embedded.validate(false, true),
+            Err(EmbeddedConfigurationError::Graphql)
+        ));
+    }
+
+    #[test]
+    fn standalone_policy_preserves_canonical_process_features() {
+        assert!(LifecycleMode::Process.installs_process_signal_handlers());
+        assert!(LifecycleMode::Process.starts_health_listener());
+        assert!(LifecycleMode::Process.validate(true, true).is_ok());
+    }
 }
