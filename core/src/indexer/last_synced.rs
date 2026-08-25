@@ -1,4 +1,4 @@
-use alloy::primitives::U64;
+use alloy::primitives::{keccak256, U64};
 use clickhouse::Row;
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -21,7 +21,7 @@ use crate::{
         generate::generate_indexer_contract_schema_name,
         postgres::generate::generate_internal_event_table_name,
     },
-    event::config::{EventProcessingConfig, TraceProcessingConfig},
+    event::config::{EventProcessingConfig, TraceProcessingConfig, LEGACY_DETAIL_KEY},
     helpers::get_full_path,
     manifest::{storage::CsvDetails, stream::StreamsConfig},
     metrics::indexing as metrics,
@@ -33,9 +33,15 @@ async fn get_last_synced_block_number_file(
     contract_name: &str,
     network: &str,
     event_name: &str,
+    detail_key: &str,
 ) -> Result<Option<U64>, UpdateLastSyncedBlockNumberFile> {
-    let file_path =
-        build_last_synced_block_number_file(full_path, contract_name, network, event_name);
+    let file_path = build_last_synced_block_number_file(
+        full_path,
+        contract_name,
+        network,
+        event_name,
+        detail_key,
+    );
 
     let path = Path::new(&file_path);
 
@@ -66,12 +72,19 @@ fn build_last_synced_block_number_file(
     contract_name: &str,
     network: &str,
     event_name: &str,
+    detail_key: &str,
 ) -> String {
+    let detail_suffix = if detail_key == crate::event::config::LEGACY_DETAIL_KEY {
+        String::new()
+    } else {
+        format!("-detail-{:#x}", keccak256(detail_key.as_bytes()))
+    };
     let path = full_path.join(contract_name).join("last-synced-blocks").join(format!(
-        "{}-{}-{}.txt",
+        "{}-{}-{}{}.txt",
         contract_name.to_lowercase(),
         network.to_lowercase(),
-        event_name.to_lowercase()
+        event_name.to_lowercase(),
+        detail_suffix,
     ));
 
     path.to_string_lossy().into_owned()
@@ -88,9 +101,21 @@ pub struct SyncConfig<'a> {
     pub contract_name: &'a str,
     pub event_name: &'a str,
     pub network: &'a str,
+    pub detail_key: &'a str,
 }
 
-pub async fn get_last_synced_block_number(config: SyncConfig<'_>) -> Option<U64> {
+#[derive(thiserror::Error, Debug)]
+pub enum GetLastSyncedBlockError {
+    #[error("exact cursor persistence error: {0}")]
+    Persistence(String),
+
+    #[error(transparent)]
+    File(#[from] UpdateLastSyncedBlockNumberFile),
+}
+
+pub async fn get_last_synced_block_number(
+    config: SyncConfig<'_>,
+) -> Result<Option<U64>, GetLastSyncedBlockError> {
     // 1. Database storage takes priority (matches write-side priority in
     //    update_progress_and_last_synced_task which uses postgres > clickhouse > csv > stream)
 
@@ -99,30 +124,43 @@ pub async fn get_last_synced_block_number(config: SyncConfig<'_>) -> Option<U64>
         let schema =
             generate_indexer_contract_schema_name(config.indexer_name, config.contract_name);
         let table_name = generate_internal_event_table_name(&schema, config.event_name);
+        postgres
+            .ensure_detail_cursor(&table_name, config.network, config.detail_key)
+            .await
+            .map_err(|error| GetLastSyncedBlockError::Persistence(error.to_string()))?;
         let query = format!(
-            "SELECT last_synced_block FROM rindexer_internal.{table_name} WHERE network = $1"
+            "SELECT last_synced_block FROM rindexer_internal.{table_name} WHERE network = $1 AND detail_key = $2"
         );
 
-        return match postgres.query_one(&query, &[&config.network]).await {
-            Ok(row) => {
+        return match postgres
+            .query_one_or_none(&query, &[&config.network, &config.detail_key])
+            .await
+        {
+            Ok(Some(row)) => {
                 let result: Decimal = row.get("last_synced_block");
                 let parsed =
                     U64::from_str(&result.to_string()).expect("Failed to parse last_synced_block");
                 if parsed.is_zero() {
-                    None
+                    Ok(None)
                 } else {
-                    Some(parsed)
+                    Ok(Some(parsed))
                 }
             }
-            Err(e) => {
-                error!("Error fetching last synced block: {:?}", e);
-                None
-            }
+            Ok(None) => Err(GetLastSyncedBlockError::Persistence(format!(
+                "seeded exact cursor disappeared from rindexer_internal.{table_name} ({}, {})",
+                config.network, config.detail_key
+            ))),
+            Err(error) => Err(GetLastSyncedBlockError::Persistence(error.to_string())),
         };
     }
 
     // Query ClickHouse for last synced block
     if let Some(clickhouse) = config.clickhouse {
+        #[derive(Row, Deserialize)]
+        struct DetailRow {
+            detail_key: String,
+        }
+
         #[derive(Row, Deserialize)]
         struct LastBlock {
             last_synced_block: u64,
@@ -131,9 +169,41 @@ pub async fn get_last_synced_block_number(config: SyncConfig<'_>) -> Option<U64>
         let schema =
             generate_indexer_contract_schema_name(config.indexer_name, config.contract_name);
         let table_name = generate_internal_event_table_name_no_shorten(&schema, config.event_name);
+        let escaped_network = config.network.replace('\'', "\\'");
+        let escaped_detail_key = config.detail_key.replace('\'', "\\'");
+        let identity_query = format!(
+            "SELECT detail_key FROM rindexer_internal.{table_name} FINAL WHERE network = '{escaped_network}'"
+        );
+        let existing = clickhouse
+            .query_all::<DetailRow>(&identity_query)
+            .await
+            .map_err(|error| GetLastSyncedBlockError::Persistence(error.to_string()))?
+            .into_iter()
+            .map(|row| row.detail_key)
+            .collect::<Vec<_>>();
+        let has_legacy = existing.iter().any(|key| key == LEGACY_DETAIL_KEY);
+        let has_exact = existing.iter().any(|key| key != LEGACY_DETAIL_KEY);
+        if (config.detail_key == LEGACY_DETAIL_KEY && has_exact)
+            || (config.detail_key != LEGACY_DETAIL_KEY && has_legacy)
+        {
+            return Err(GetLastSyncedBlockError::Persistence(format!(
+                "ClickHouse exact cursor identity conflict for ({}, {}): {:?}",
+                config.network, config.detail_key, existing
+            )));
+        }
+        if !existing.iter().any(|key| key == config.detail_key) {
+            let seed = format!(
+                "INSERT INTO rindexer_internal.{table_name} (network, detail_key, last_synced_block) VALUES ('{escaped_network}', '{escaped_detail_key}', 0)"
+            );
+            clickhouse
+                .execute(&seed)
+                .await
+                .map_err(|error| GetLastSyncedBlockError::Persistence(error.to_string()))?;
+        }
         let query = format!(
-            "SELECT last_synced_block FROM rindexer_internal.{table_name} FINAL WHERE network = '{}'",
-            config.network
+            "SELECT last_synced_block FROM rindexer_internal.{table_name} FINAL WHERE network = '{}' AND detail_key = '{}'",
+            escaped_network,
+            escaped_detail_key,
         );
 
         let row = clickhouse.query_one::<LastBlock>(&query).await;
@@ -145,15 +215,12 @@ pub async fn get_last_synced_block_number(config: SyncConfig<'_>) -> Option<U64>
                     U64::from_str(&result.to_string()).expect("Failed to parse last_synced_block");
 
                 if parsed.is_zero() {
-                    None
+                    Ok(None)
                 } else {
-                    Some(parsed)
+                    Ok(Some(parsed))
                 }
             }
-            Err(e) => {
-                error!("Error fetching last synced block: {:?}", e);
-                None
-            }
+            Err(error) => Err(GetLastSyncedBlockError::Persistence(error.to_string())),
         };
     }
 
@@ -162,27 +229,22 @@ pub async fn get_last_synced_block_number(config: SyncConfig<'_>) -> Option<U64>
     // Check CSV file for last seen block
     if config.contract_csv_enabled {
         if let Some(csv_details) = config.csv_details {
-            return if let Ok(result) = get_last_synced_block_number_file(
+            let result = get_last_synced_block_number_file(
                 &get_full_path(config.project_path, &csv_details.path).unwrap_or_else(|_| {
                     panic!("failed to get full path {}", config.project_path.display())
                 }),
                 config.contract_name,
                 config.network,
                 config.event_name,
+                config.detail_key,
             )
-            .await
-            {
-                if let Some(value) = result {
-                    if value.is_zero() {
-                        return None;
-                    }
+            .await?;
+            if let Some(value) = result {
+                if value.is_zero() {
+                    return Ok(None);
                 }
-
-                result
-            } else {
-                error!("Error fetching last synced block from CSV");
-                None
-            };
+            }
+            return Ok(result);
         }
     }
 
@@ -195,28 +257,23 @@ pub async fn get_last_synced_block_number(config: SyncConfig<'_>) -> Option<U64>
             .create_full_streams_last_synced_block_path(config.project_path, config.contract_name)
             .await;
 
-        return if let Ok(result) = get_last_synced_block_number_file(
+        let result = get_last_synced_block_number_file(
             &config.project_path.join(stream_details.get_streams_last_synced_block_path()),
             config.contract_name,
             config.network,
             config.event_name,
+            config.detail_key,
         )
-        .await
-        {
-            if let Some(value) = result {
-                if value.is_zero() {
-                    return None;
-                }
+        .await?;
+        if let Some(value) = result {
+            if value.is_zero() {
+                return Ok(None);
             }
-
-            result
-        } else {
-            error!("Error fetching last synced block from stream");
-            None
-        };
+        }
+        return Ok(result);
     }
 
-    None
+    Ok(None)
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -232,14 +289,26 @@ async fn update_last_synced_block_number_for_file(
     contract_name: &str,
     network: &str,
     event_name: &str,
+    detail_key: &str,
     full_path: &Path,
     to_block: U64,
 ) -> Result<(), UpdateLastSyncedBlockNumberFile> {
-    let file_path =
-        build_last_synced_block_number_file(full_path, contract_name, network, event_name);
+    let file_path = build_last_synced_block_number_file(
+        full_path,
+        contract_name,
+        network,
+        event_name,
+        detail_key,
+    );
 
-    let last_block =
-        get_last_synced_block_number_file(full_path, contract_name, network, event_name).await?;
+    let last_block = get_last_synced_block_number_file(
+        full_path,
+        contract_name,
+        network,
+        event_name,
+        detail_key,
+    )
+    .await?;
 
     let to_block_higher_then_last_block =
         if let Some(last_block_value) = last_block { to_block > last_block_value } else { true };
@@ -269,7 +338,67 @@ pub async fn update_progress_and_last_synced_task(
     config: Arc<EventProcessingConfig>,
     to_block: U64,
     on_complete: impl FnOnce() + Send + 'static,
-) {
+) -> Result<(), String> {
+    let detail_key = config.detail_key();
+    let network = config.network_contract().network.clone();
+
+    let persistence_result: Result<(), String> = if let Some(postgres) = &config.postgres() {
+        let schema =
+            generate_indexer_contract_schema_name(&config.indexer_name(), &config.contract_name());
+        let table_name = generate_internal_event_table_name(&schema, &config.event_name());
+        postgres
+            .advance_detail_cursor(&table_name, &network, &detail_key, to_block.to())
+            .await
+            .map_err(|error| error.to_string())
+    } else if let Some(clickhouse) = &config.clickhouse() {
+        let schema =
+            generate_indexer_contract_schema_name(&config.indexer_name(), &config.contract_name());
+        let table_name =
+            generate_internal_event_table_name_no_shorten(&schema, &config.event_name());
+        let query = format!(
+            "INSERT INTO rindexer_internal.{table_name} (network, detail_key, last_synced_block) VALUES ('{}', '{}', {to_block})",
+            network.replace('\'', "\\'"),
+            detail_key.replace('\'', "\\'")
+        );
+        clickhouse.execute(&query).await.map_err(|error| error.to_string())
+    } else if let Some(csv_details) = &config.csv_details() {
+        update_last_synced_block_number_for_file(
+            &config.contract_name(),
+            &network,
+            &config.event_name(),
+            &detail_key,
+            &get_full_path(&config.project_path(), &csv_details.path).unwrap_or_else(|_| {
+                panic!("failed to get full path {}", config.project_path().display())
+            }),
+            to_block,
+        )
+        .await
+        .map_err(|error| error.to_string())
+    } else if let Some(stream_last_synced_block_file_path) =
+        &config.stream_last_synced_block_file_path()
+    {
+        let full_path = config.project_path().join(stream_last_synced_block_file_path);
+
+        update_last_synced_block_number_for_file(
+            &config.contract_name(),
+            &network,
+            &config.event_name(),
+            &detail_key,
+            &full_path,
+            to_block,
+        )
+        .await
+        .map_err(|error| error.to_string())
+    } else {
+        Ok(())
+    };
+
+    if let Err(error) = persistence_result {
+        on_complete();
+        return Err(error);
+    }
+
+    // Only publish in-memory progress after exact durable progress succeeds.
     let update_last_synced_block_result = tokio::time::timeout(
         Duration::from_millis(100),
         config.progress().update_last_synced_block(
@@ -279,14 +408,11 @@ pub async fn update_progress_and_last_synced_task(
         ),
     )
     .await;
-
-    // We don't want the in-memory progress reporter to hold up processing. Under high-ingest
-    // workloads, contention can be high enough to hang here.
     match update_last_synced_block_result {
-        Ok(Err(e)) => error!("Error updating in-mem last synced block result: {:?}", e),
-        Err(_) => debug!("Timeout in update_last_synced_block_result, completing early"),
+        Ok(Err(error)) => error!("Error updating in-mem last synced block result: {:?}", error),
+        Err(_) => debug!("Timeout updating in-memory progress after durable cursor commit"),
         _ => {}
-    };
+    }
 
     let latest = config
         .network_contract()
@@ -295,170 +421,111 @@ pub async fn update_progress_and_last_synced_task(
         .await
         .ok()
         .flatten()
-        .map(|b| b.header.number)
+        .map(|block| block.header.number)
         .unwrap_or(0);
-
-    // Record block progress metrics
-    let network = &config.network_contract().network;
-    let contract = &config.contract_name();
-    let event = &config.event_name();
-    let to_block_u64 = to_block.to::<u64>();
-
-    metrics::set_last_synced_block(network, contract, event, to_block_u64);
-    if latest > 0 {
-        metrics::set_latest_chain_block(network, latest);
-        metrics::set_blocks_behind(network, contract, event, to_block_u64, latest);
-    }
-
     if let Some(postgres) = &config.postgres() {
-        let schema =
-            generate_indexer_contract_schema_name(&config.indexer_name(), &config.contract_name());
-        let table_name = generate_internal_event_table_name(&schema, &config.event_name());
-        let network = &config.network_contract().network;
-        let query = format!(
-            "UPDATE rindexer_internal.{table_name} SET last_synced_block = {to_block} WHERE network = '{network}' AND {to_block} > last_synced_block;
-             UPDATE rindexer_internal.latest_block SET block = {latest} WHERE network = '{network}' AND {latest} > block;"
-        );
-
-        let result = postgres.batch_execute(&query).await;
-
-        if let Err(e) = result {
-            error!("Error updating db last synced block: {:?}", e);
+        if let Err(error) = postgres
+            .execute(
+                "UPDATE rindexer_internal.latest_block SET block = $1 WHERE network = $2 AND $1 > block",
+                &[&EthereumSqlTypeWrapper::U64(latest), &network],
+            )
+            .await
+        {
+            error!("Error updating coarse latest-block telemetry: {:?}", error);
         }
     } else if let Some(clickhouse) = &config.clickhouse() {
-        let schema =
-            generate_indexer_contract_schema_name(&config.indexer_name(), &config.contract_name());
-        let table_name =
-            generate_internal_event_table_name_no_shorten(&schema, &config.event_name());
-        let network = &config.network_contract().network;
         let query = format!(
-            r#"
-            INSERT INTO rindexer_internal.{table_name} (network, last_synced_block) VALUES ('{network}', {to_block});
-            INSERT INTO rindexer_internal.latest_block (network, block) VALUES ('{network}', {latest});
-            "#
+            "INSERT INTO rindexer_internal.latest_block (network, block) VALUES ('{}', {latest})",
+            network.replace('\'', "\\'")
         );
-
-        let result = clickhouse.execute_batch(&query).await;
-
-        if let Err(e) = result {
-            error!("Error updating clickhouse last synced block: {:?}", e);
+        if let Err(error) = clickhouse.execute(&query).await {
+            error!("Error updating coarse ClickHouse latest-block telemetry: {:?}", error);
         }
-    } else if let Some(csv_details) = &config.csv_details() {
-        if let Err(e) = update_last_synced_block_number_for_file(
-            &config.contract_name(),
-            &config.network_contract().network,
-            &config.event_name(),
-            &get_full_path(&config.project_path(), &csv_details.path).unwrap_or_else(|_| {
-                panic!("failed to get full path {}", config.project_path().display())
-            }),
-            to_block,
-        )
-        .await
-        {
-            error!(
-                "Error updating last synced block to CSV - path - {} error - {:?}",
-                csv_details.path, e
-            );
-        }
-    } else if let Some(stream_last_synced_block_file_path) =
-        &config.stream_last_synced_block_file_path()
-    {
-        let full_path = config.project_path().join(stream_last_synced_block_file_path);
+    }
 
-        if let Err(e) = update_last_synced_block_number_for_file(
-            &config.contract_name(),
-            &config.network_contract().network,
-            &config.event_name(),
-            &full_path,
-            to_block,
-        )
-        .await
-        {
-            error!(
-                "Error updating last synced block to stream - path - {} error - {:?}",
-                stream_last_synced_block_file_path, e
-            );
-        }
+    let contract = config.contract_name();
+    let event = config.event_name();
+    let to_block_u64 = to_block.to::<u64>();
+    metrics::set_last_synced_block(&network, &contract, &event, to_block_u64);
+    if latest > 0 {
+        metrics::set_latest_chain_block(&network, latest);
+        metrics::set_blocks_behind(&network, &contract, &event, to_block_u64, latest);
     }
 
     on_complete();
+    Ok(())
 }
 
 pub async fn evm_trace_update_progress_and_last_synced_task(
     config: Arc<TraceProcessingConfig>,
     to_block: U64,
     on_complete: impl FnOnce() + Send + 'static,
-) {
-    let update_last_synced_block_result = tokio::time::timeout(
-        Duration::from_millis(100),
-        config.progress.update_last_synced_block(config.chain_id, &config.id, to_block),
-    )
-    .await;
-
-    // We don't want the in-memory progress reporter to hold up processing. Under high-ingest
-    // workloads, contention can be high enough to hang here.
-    match update_last_synced_block_result {
-        Ok(Err(e)) => error!("Error updating in-mem last synced trace result: {:?}", e),
-        Err(_) => debug!("Timeout in update_last_synced_block_result, completing early"),
-        _ => {}
-    }
-
-    if let Some(postgres) = &config.postgres {
-        // Use the native_transfer table for all trace events since they share the same pipeline
-        let schema =
-            generate_indexer_contract_schema_name(&config.indexer_name, &config.contract_name);
-        let table_name = generate_internal_event_table_name(&schema, "native_transfer");
-        let query = format!(
-                "UPDATE rindexer_internal.{table_name} SET last_synced_block = $1 WHERE network = $2 AND $1 > last_synced_block"
-            );
-        let result = postgres
-            .execute(&query, &[&EthereumSqlTypeWrapper::U64(to_block.to()), &config.network])
-            .await;
-
-        if let Err(e) = result {
-            error!("Error updating last synced trace block db: {:?}", e);
-        }
-    }
-
-    if let Some(csv_details) = &config.csv_details {
-        if let Err(e) = update_last_synced_block_number_for_file(
+) -> Result<(), String> {
+    // Persist secondary file sinks before the authoritative database cursor.
+    // A file failure therefore cannot leave PostgreSQL claiming coverage that
+    // the configured sink never received.
+    let file_result = if let Some(csv_details) = &config.csv_details {
+        update_last_synced_block_number_for_file(
             &config.contract_name,
             &config.network,
             &config.event_name,
+            LEGACY_DETAIL_KEY,
             &get_full_path(&config.project_path, &csv_details.path).unwrap_or_else(|_| {
                 panic!("failed to get full path {}", config.project_path.display())
             }),
             to_block,
         )
         .await
-        {
-            error!(
-                "Error updating last synced block to CSV - path - {} error - {:?}",
-                csv_details.path, e
-            );
-        }
+        .map_err(|error| error.to_string())
     } else if let Some(stream_last_synced_block_file_path) =
         &config.stream_last_synced_block_file_path
     {
         let full_path = config.project_path.join(stream_last_synced_block_file_path);
 
-        if let Err(e) = update_last_synced_block_number_for_file(
+        update_last_synced_block_number_for_file(
             &config.contract_name,
             &config.network,
             &config.event_name,
+            LEGACY_DETAIL_KEY,
             &full_path,
             to_block,
         )
         .await
+        .map_err(|error| error.to_string())
+    } else {
+        Ok(())
+    };
+    if let Err(error) = file_result {
+        on_complete();
+        return Err(error);
+    }
+
+    if let Some(postgres) = &config.postgres {
+        let schema =
+            generate_indexer_contract_schema_name(&config.indexer_name, &config.contract_name);
+        let table_name = generate_internal_event_table_name(&schema, "native_transfer");
+        if let Err(error) = postgres
+            .advance_detail_cursor(&table_name, &config.network, LEGACY_DETAIL_KEY, to_block.to())
+            .await
         {
-            error!(
-                "Error updating last synced block to stream - path - {} error - {:?}",
-                stream_last_synced_block_file_path, e
-            );
+            on_complete();
+            return Err(error.to_string());
         }
     }
 
+    let update_last_synced_block_result = tokio::time::timeout(
+        Duration::from_millis(100),
+        config.progress.update_last_synced_block(config.chain_id, &config.id, to_block),
+    )
+    .await;
+    match update_last_synced_block_result {
+        Ok(Err(error)) => error!("Error updating in-mem last synced trace result: {:?}", error),
+        Err(_) => debug!("Timeout updating in-memory trace progress after durable cursor commit"),
+        _ => {}
+    }
+
     on_complete();
+    Ok(())
 }
 
 // ============================================================================
@@ -614,6 +681,7 @@ mod tests {
             "EntryPoint",
             "13337",
             "UserOperationEvent",
+            LEGACY_DETAIL_KEY,
             &full_path,
             U64::from(2235535),
         )
@@ -638,6 +706,7 @@ mod tests {
             "EntryPoint",
             "13337",
             "UserOperationEvent",
+            LEGACY_DETAIL_KEY,
             &full_path,
             U64::from(20),
         )
@@ -647,6 +716,7 @@ mod tests {
             "EntryPoint",
             "13337",
             "UserOperationEvent",
+            LEGACY_DETAIL_KEY,
             &full_path,
             U64::from(10),
         )
@@ -660,5 +730,35 @@ mod tests {
 
         let contents = fs::read_to_string(checkpoint_path).await.unwrap();
         assert_eq!(contents, "20");
+    }
+
+    #[test]
+    fn file_checkpoint_paths_are_isolated_by_opaque_detail_key() {
+        let base = Path::new("/tmp/rindexer-cursors");
+        let first = build_last_synced_block_number_file(
+            base,
+            "Token",
+            "local",
+            "Transfer",
+            "token:i1:wallet",
+        );
+        let second = build_last_synced_block_number_file(
+            base,
+            "Token",
+            "local",
+            "Transfer",
+            "token:i2:wallet",
+        );
+        let legacy = build_last_synced_block_number_file(
+            base,
+            "Token",
+            "local",
+            "Transfer",
+            LEGACY_DETAIL_KEY,
+        );
+
+        assert_ne!(first, second);
+        assert!(first.contains("-detail-0x"));
+        assert!(legacy.ends_with("token-local-transfer.txt"));
     }
 }

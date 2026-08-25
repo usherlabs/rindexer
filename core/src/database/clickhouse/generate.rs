@@ -247,20 +247,13 @@ fn generate_internal_event_table_clickhouse(
             r#"
                 CREATE TABLE IF NOT EXISTS {} (
                     "network" String,
+                    "detail_key" String DEFAULT '__event__',
                     "last_synced_block" UInt64
                 )
                     ENGINE = ReplacingMergeTree(last_synced_block)
-                    ORDER BY network;"#,
+                    ORDER BY (network, detail_key);"#,
             table_name
         );
-
-        let insert_queries = networks.iter().map(|network| {
-            format!(
-                r#"INSERT INTO {} ("network", "last_synced_block") VALUES ('{}', 0);"#,
-                table_name,
-                network
-            )
-        }).collect::<Vec<_>>().join("\n");
 
         let create_latest_block_query = r#"
             CREATE TABLE IF NOT EXISTS rindexer_internal.latest_block (
@@ -278,7 +271,9 @@ fn generate_internal_event_table_clickhouse(
         }).collect::<Vec<_>>().join("\n");
 
 
-        format!("{} {} {} {}", create_table_query, insert_queries, create_latest_block_query, latest_block_insert_queries)
+        // Exact cursor rows are runtime-seeded from the opaque manifest detail
+        // identity; a network-only cursor is never expanded into detail rows.
+        format!("{} {} {}", create_table_query, create_latest_block_query, latest_block_insert_queries)
     }).collect::<Vec<_>>().join("\n")
 }
 
@@ -428,5 +423,29 @@ pub fn solidity_type_to_clickhouse_type(abi_type: &str) -> String {
         format!("Array({})", sql_type)
     } else {
         sql_type.to_string()
+    }
+}
+
+#[cfg(test)]
+mod exact_cursor_tests {
+    use super::*;
+
+    #[test]
+    fn fresh_event_cursor_schema_uses_exact_identity_and_no_network_seed() {
+        let event: EventInfo = serde_json::from_value(serde_json::json!({
+            "name": "Transfer",
+            "inputs": [],
+            "signature": "Transfer()",
+            "struct_result": "TransferResult",
+            "struct_data": "TransferData"
+        }))
+        .unwrap();
+        let sql =
+            generate_internal_event_table_clickhouse(&[event], "test_token", vec!["ethereum"]);
+
+        assert!(sql.contains("\"detail_key\" String DEFAULT '__event__'"));
+        assert!(sql.contains("ORDER BY (network, detail_key)"));
+        assert!(!sql.contains("test_token_transfer (\"network\", \"last_synced_block\")"));
+        assert!(!sql.contains("MAX("));
     }
 }

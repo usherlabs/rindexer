@@ -46,6 +46,12 @@ pub enum ProcessEventError {
 
     #[error("Could not get block number from provider: {0}")]
     ProviderCallError(#[from] ProviderError),
+
+    #[error("Event callback failed: {0}")]
+    Callback(String),
+
+    #[error("Exact cursor persistence failed: {0}")]
+    Cursor(String),
 }
 
 /// Processes an event that doesn't have dependencies.
@@ -93,11 +99,19 @@ async fn process_event_logs(
     //
     // We default to `2`, but the user will ideally override this based on the logic in the handler.
     // TODO: this feature is not safe need to review it
-    let callback_concurrency = if config.index_event_in_order() {
+    let configured_callback_concurrency = if config.index_event_in_order() {
         1usize
     } else {
         config.config().callback_concurrency.unwrap_or(1)
     };
+    if configured_callback_concurrency > 1 {
+        warn!(
+            "{} - exact durable cursor ordering serializes callbacks (configured concurrency {})",
+            config.info_log_name(),
+            configured_callback_concurrency
+        );
+    }
+    let callback_concurrency = 1usize;
 
     let callback_permits = Arc::new(Semaphore::new(callback_concurrency));
 
@@ -108,7 +122,7 @@ async fn process_event_logs(
         trace_registry,
     );
     // Drain inline so handles don't accumulate during infinite live indexing.
-    let mut in_flight: FuturesUnordered<JoinHandle<()>> = FuturesUnordered::new();
+    let mut in_flight: FuturesUnordered<JoinHandle<Result<(), String>>> = FuturesUnordered::new();
     let mut pending_error: Option<Box<dyn std::error::Error + Send>> = None;
 
     // Spawn the callback task and either await it (dependency mode) or push
@@ -122,17 +136,21 @@ async fn process_event_logs(
         permits: &Arc<Semaphore>,
         result: FetchLogsResult,
         block_until_indexed: bool,
-        in_flight: &mut FuturesUnordered<JoinHandle<()>>,
+        in_flight: &mut FuturesUnordered<JoinHandle<Result<(), String>>>,
     ) -> Result<(), Box<ProviderError>> {
         let task = handle_logs_result(Arc::clone(config), permits.clone(), Ok(result))
             .await
             .map_err(|e| Box::new(ProviderError::CustomError(e.to_string())))?;
         if block_until_indexed {
-            task.await.map_err(|e| Box::new(ProviderError::BatchRequestFailed(e)))?;
+            task.await
+                .map_err(|e| Box::new(ProviderError::BatchRequestFailed(e)))?
+                .map_err(|e| Box::new(ProviderError::CustomError(e)))?;
         } else {
             in_flight.push(task);
             while let std::task::Poll::Ready(Some(joined)) = poll!(in_flight.next()) {
-                joined.map_err(|e| Box::new(ProviderError::BatchRequestFailed(e)))?;
+                joined
+                    .map_err(|e| Box::new(ProviderError::BatchRequestFailed(e)))?
+                    .map_err(|e| Box::new(ProviderError::CustomError(e)))?;
             }
         }
         Ok(())
@@ -246,7 +264,9 @@ async fn process_event_logs(
     }
 
     while let Some(joined) = in_flight.next().await {
-        joined.map_err(|e| Box::new(ProviderError::BatchRequestFailed(e)))?;
+        joined
+            .map_err(|e| Box::new(ProviderError::BatchRequestFailed(e)))?
+            .map_err(|e| Box::new(ProviderError::CustomError(e)))?;
     }
 
     ensure_logs_stream_end_is_expected(
@@ -726,25 +746,33 @@ async fn live_indexing_for_contract_event_dependencies(
                     from_block
                 );
 
+                // No event task spawns on this skip path, but the checkpoint write below
+                // must still be tracked so graceful shutdown waits for it.
+                indexing_event_processing();
+                if let Err(error) = update_progress_and_last_synced_task(
+                    Arc::clone(config),
+                    to_block,
+                    indexing_event_processed,
+                )
+                .await
+                {
+                    error!(
+                        "{} - exact Bloom-negative cursor persistence failed at {}: {}",
+                        config.info_log_name(),
+                        to_block,
+                        error
+                    );
+                    break;
+                }
+
                 ordering_live_indexing_details.filter =
                     ordering_live_indexing_details.filter.set_from_block(to_block + U64::from(1));
-
                 ordering_live_indexing_details.last_seen_block_number = to_block;
                 *ordering_live_indexing_details_map
                     .get(&config.processor_id())
                     .expect("Failed to get ordering_live_indexing_details_map")
                     .lock()
                     .await = ordering_live_indexing_details;
-
-                // No event task spawns on this skip path, but the checkpoint write below
-                // must still be tracked so graceful shutdown waits for it.
-                indexing_event_processing();
-                update_progress_and_last_synced_task(
-                    Arc::clone(config),
-                    to_block,
-                    indexing_event_processed,
-                )
-                .await;
                 continue;
             }
 
@@ -800,14 +828,26 @@ async fn live_indexing_for_contract_event_dependencies(
                     match result {
                         Ok(task) => {
                             let complete = task.await;
-                            if let Err(e) = complete {
-                                error!(
-                                    "{} - {} - Error indexing task: {} - will try again in 200ms",
-                                    &config.info_log_name(),
-                                    IndexingEventProgressStatus::live_log(),
-                                    e
-                                );
-                                break;
+                            match complete {
+                                Ok(Ok(())) => {}
+                                Ok(Err(error)) => {
+                                    error!(
+                                        "{} - {} - Event/cursor processing failed: {} - will retry",
+                                        &config.info_log_name(),
+                                        IndexingEventProgressStatus::live_log(),
+                                        error
+                                    );
+                                    break;
+                                }
+                                Err(error) => {
+                                    error!(
+                                        "{} - {} - Error indexing task: {} - will try again in 200ms",
+                                        &config.info_log_name(),
+                                        IndexingEventProgressStatus::live_log(),
+                                        error
+                                    );
+                                    break;
+                                }
                             }
                             ordering_live_indexing_details.last_seen_block_number = to_block;
                             if logs_empty {
@@ -873,7 +913,7 @@ async fn trigger_event(
     config: Arc<EventProcessingConfig>,
     fn_data: Vec<EventResult>,
     to_block: U64,
-) {
+) -> Result<(), String> {
     indexing_event_processing();
 
     // Record events processed metric
@@ -889,18 +929,19 @@ async fn trigger_event(
         );
     }
 
-    let should_update_progress = if fn_data.is_empty() {
-        #[allow(clippy::needless_bool)]
+    if fn_data.is_empty() {
         if !is_running() || config.cancel_token().is_cancelled() {
-            false
-        } else {
-            true
+            indexing_event_processed();
+            return Ok(());
         }
     } else {
-        config.trigger_event(fn_data.clone()).await.is_ok()
-    };
+        if let Err(error) = config.trigger_event(fn_data.clone()).await {
+            indexing_event_processed();
+            return Err(error);
+        }
+    }
 
-    if should_update_progress {
+    {
         // Double-index race NOTE: for the no-code POSTGRES-sole-sink path this is
         // closed — no_code_callback commits [batch + rindexer_internal cursor] in
         // ONE transaction (insert_bulk_with_cursor), so this async advance is only
@@ -910,27 +951,27 @@ async fn trigger_event(
         // in no_code.rs), custom Rust handlers, the trace path (its outer
         // advance ignores the callback result), and factory discovery events
         // (child-address bookkeeping commits after the callback).
-        update_progress_and_last_synced_task(config, to_block, indexing_event_processed).await;
-    } else {
-        indexing_event_processed();
+        update_progress_and_last_synced_task(config, to_block, indexing_event_processed).await?;
     }
+    Ok(())
 }
 
 async fn handle_logs_result(
     config: Arc<EventProcessingConfig>,
     callback_permits: Arc<Semaphore>,
     result: Result<FetchLogsResult, Box<dyn std::error::Error + Send>>,
-) -> Result<JoinHandle<()>, Box<dyn std::error::Error + Send>> {
+) -> Result<JoinHandle<Result<(), String>>, Box<dyn std::error::Error + Send>> {
     match result {
         Ok(result) => {
             // Reorg signal from reth ExEx — the coordinator handles rollback,
             // so we just skip processing these empty results.
             if result.reorg.is_some() {
-                return Ok(tokio::spawn(async {}));
+                return Ok(tokio::spawn(async { Ok(()) }));
             }
 
             debug!("{} - Processing {} logs", config.info_log_name(), result.logs.len());
 
+            let detail_key = config.detail_key();
             let fn_data = result
                 .logs
                 .into_iter()
@@ -940,20 +981,22 @@ async fn handle_logs_result(
                         log,
                         result.from_block,
                         result.to_block,
+                        detail_key.clone(),
                     )
                 })
                 .collect::<Vec<_>>();
 
             if let Ok(permit) = callback_permits.clone().acquire_owned().await {
                 let task = tokio::spawn(async move {
-                    trigger_event(config, fn_data, result.to_block).await;
-                    drop(permit)
+                    let result = trigger_event(config, fn_data, result.to_block).await;
+                    drop(permit);
+                    result
                 });
 
                 Ok(task)
             } else {
-                trigger_event(config, fn_data, result.to_block).await;
-                Ok(tokio::spawn(async {}))
+                let result = trigger_event(config, fn_data, result.to_block).await;
+                Ok(tokio::spawn(async move { result }))
             }
         }
         Err(e) => {

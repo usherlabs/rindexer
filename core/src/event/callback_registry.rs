@@ -108,6 +108,9 @@ pub trait HasTxInformation {
 pub struct LogFoundInRequest {
     pub from_block: U64,
     pub to_block: U64,
+    /// Opaque engine-derived identity of the manifest detail that produced
+    /// this batch. Consumers must not reconstruct or aggregate it.
+    pub detail_key: String,
 }
 
 #[derive(Debug, Clone)]
@@ -124,6 +127,7 @@ impl EventResult {
         log: Log,
         start_block: U64,
         end_block: U64,
+        detail_key: String,
     ) -> Self {
         let log_address = log.inner.address;
         Self {
@@ -144,7 +148,11 @@ impl EventResult {
                     .expect("log should contain transaction_index"),
                 log_index: U256::from(log.log_index.expect("log should contain log_index")),
             },
-            found_in_request: LogFoundInRequest { from_block: start_block, to_block: end_block },
+            found_in_request: LogFoundInRequest {
+                from_block: start_block,
+                to_block: end_block,
+                detail_key,
+            },
         }
     }
 }
@@ -363,7 +371,11 @@ impl TraceResult {
                 transaction_index: trace.transaction_position.unwrap_or(0),
                 log_index: U256::from(0),
             },
-            found_in_request: LogFoundInRequest { from_block: start_block, to_block: end_block },
+            found_in_request: LogFoundInRequest {
+                from_block: start_block,
+                to_block: end_block,
+                detail_key: crate::event::config::LEGACY_DETAIL_KEY.to_string(),
+            },
         }
     }
 
@@ -394,7 +406,11 @@ impl TraceResult {
                     .expect("transaction_index should be present"),
                 log_index: U256::from(0),
             },
-            found_in_request: LogFoundInRequest { from_block: start_block, to_block: end_block },
+            found_in_request: LogFoundInRequest {
+                from_block: start_block,
+                to_block: end_block,
+                detail_key: crate::event::config::LEGACY_DETAIL_KEY.to_string(),
+            },
         }
     }
 
@@ -421,7 +437,11 @@ impl TraceResult {
                 log_index: U256::from(0),
             },
             block: Box::new(block),
-            found_in_request: LogFoundInRequest { from_block: start_block, to_block: end_block },
+            found_in_request: LogFoundInRequest {
+                from_block: start_block,
+                to_block: end_block,
+                detail_key: crate::event::config::LEGACY_DETAIL_KEY.to_string(),
+            },
         }
     }
 }
@@ -869,7 +889,11 @@ mod tests {
     }
 
     fn test_found_in_request(from_block: u64, to_block: u64) -> LogFoundInRequest {
-        LogFoundInRequest { from_block: U64::from(from_block), to_block: U64::from(to_block) }
+        LogFoundInRequest {
+            from_block: U64::from(from_block),
+            to_block: U64::from(to_block),
+            detail_key: crate::event::config::LEGACY_DETAIL_KEY.to_string(),
+        }
     }
 
     //Minimal valid json for alloy::network::AnyRpcBlock deserialization

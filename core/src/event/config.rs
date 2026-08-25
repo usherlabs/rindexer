@@ -70,6 +70,79 @@ pub struct ContractEventProcessingConfig {
     pub multicall_addresses: Arc<HashMap<String, Option<String>>>,
 }
 
+// FIET-PATCH:outerlook-85b7dad-per-detail-cursors
+pub const LEGACY_DETAIL_KEY: &str = "__event__";
+
+/// Derive the durable cursor identity for one manifest detail.
+///
+/// Address-scoped keys retain the historical FIET byte format. Filter-mode
+/// details use an explicit prefix because they have no contract address.
+pub fn derive_detail_key(
+    indexing_contract_setup: &IndexingContractSetup,
+    event_name: &str,
+) -> String {
+    fn indexed_positions(indexed_filter: &EventInputIndexedFilters) -> Vec<String> {
+        [
+            (1, indexed_filter.indexed_1.as_ref()),
+            (2, indexed_filter.indexed_2.as_ref()),
+            (3, indexed_filter.indexed_3.as_ref()),
+        ]
+        .into_iter()
+        .filter_map(|(position, values)| {
+            values
+                .filter(|values| !values.is_empty())
+                .map(|values| format!("i{position}:{}", values.join(",")))
+        })
+        .collect()
+    }
+
+    let (prefix, indexed_filter) = match indexing_contract_setup {
+        IndexingContractSetup::Address(details) => {
+            let address = match &details.address {
+                ValueOrArray::Value(address) => address.to_string(),
+                ValueOrArray::Array(addresses) if !addresses.is_empty() => {
+                    addresses.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
+                }
+                ValueOrArray::Array(_) => return LEGACY_DETAIL_KEY.to_string(),
+            };
+            let filter = details
+                .indexed_filters
+                .as_ref()
+                .and_then(|filters| filters.iter().find(|filter| filter.event_name == event_name));
+            (address, filter)
+        }
+        IndexingContractSetup::Factory(details) => {
+            let address = match &details.address {
+                ValueOrArray::Value(address) => address.to_string(),
+                ValueOrArray::Array(addresses) if !addresses.is_empty() => {
+                    addresses.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
+                }
+                ValueOrArray::Array(_) => return LEGACY_DETAIL_KEY.to_string(),
+            };
+            let filter = details
+                .indexed_filters
+                .as_ref()
+                .and_then(|filters| filters.iter().find(|filter| filter.event_name == event_name));
+            (address, filter)
+        }
+        IndexingContractSetup::Filter(details) => {
+            let filter =
+                details.indexed_filters.as_ref().filter(|filter| filter.event_name == event_name);
+            (format!("filter:{event_name}"), filter)
+        }
+    };
+
+    let Some(indexed_filter) = indexed_filter else {
+        return LEGACY_DETAIL_KEY.to_string();
+    };
+    let positions = indexed_positions(indexed_filter);
+    if positions.is_empty() {
+        LEGACY_DETAIL_KEY.to_string()
+    } else {
+        format!("{prefix}:{}", positions.join(":")).to_ascii_lowercase()
+    }
+}
+
 impl ContractEventProcessingConfig {
     pub fn info_log_name(&self) -> String {
         format!("{}::{}::{}", self.contract_name, self.event_name, self.network_contract.network)
@@ -241,8 +314,13 @@ impl EventProcessingConfig {
         let contract_name = self.contract_name();
         let network = self.network_contract().network.to_string();
 
-        let combined = format!("{topic_id}{contract_name}{network}");
+        let detail_key = self.detail_key();
+        let combined = format!("{topic_id}{contract_name}{network}{detail_key}");
         keccak256(combined.as_bytes())
+    }
+
+    pub fn detail_key(&self) -> String {
+        derive_detail_key(&self.network_contract().indexing_contract_setup, &self.event_name())
     }
 
     pub fn config(&self) -> &Config {
@@ -446,6 +524,113 @@ impl EventProcessingConfig {
     }
 }
 
+#[cfg(test)]
+mod detail_key_tests {
+    use super::{derive_detail_key, LEGACY_DETAIL_KEY};
+    use crate::{
+        event::contract_setup::{AddressDetails, FilterDetails, IndexingContractSetup},
+        manifest::contract::EventInputIndexedFilters,
+    };
+    use alloy::{primitives::Address, rpc::types::ValueOrArray};
+
+    fn indexed_filter(position: usize, value: &str) -> EventInputIndexedFilters {
+        let mut filter = EventInputIndexedFilters {
+            event_name: "Transfer".to_string(),
+            indexed_1: None,
+            indexed_2: None,
+            indexed_3: None,
+        };
+        match position {
+            1 => filter.indexed_1 = Some(vec![value.to_string()]),
+            2 => filter.indexed_2 = Some(vec![value.to_string()]),
+            3 => filter.indexed_3 = Some(vec![value.to_string()]),
+            _ => unreachable!(),
+        }
+        filter
+    }
+
+    #[test]
+    fn address_detail_key_preserves_the_fiet_fixture() {
+        let setup = IndexingContractSetup::Address(AddressDetails {
+            address: ValueOrArray::Value(Address::repeat_byte(0xab)),
+            indexed_filters: Some(vec![indexed_filter(
+                2,
+                "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            )]),
+        });
+
+        assert_eq!(
+            derive_detail_key(&setup, "Transfer"),
+            "0xabababababababababababababababababababab:i2:0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        );
+    }
+
+    #[test]
+    fn pool_manager_swap_detail_key_matches_the_maker_client_fixture_byte_for_byte() {
+        let setup = IndexingContractSetup::Address(AddressDetails {
+            address: ValueOrArray::Value(Address::repeat_byte(0x11)),
+            indexed_filters: Some(vec![EventInputIndexedFilters {
+                event_name: "Swap".to_string(),
+                indexed_1: Some(vec![
+                    "0x1111111111111111111111111111111111111111111111111111111111111111"
+                        .to_string(),
+                    "0x2222222222222222222222222222222222222222222222222222222222222222"
+                        .to_string(),
+                ]),
+                indexed_2: None,
+                indexed_3: None,
+            }]),
+        });
+
+        assert_eq!(
+            derive_detail_key(&setup, "Swap"),
+            "0x1111111111111111111111111111111111111111:i1:0x1111111111111111111111111111111111111111111111111111111111111111,0x2222222222222222222222222222222222222222222222222222222222222222"
+        );
+    }
+
+    #[test]
+    fn wallet_transfer_detail_keys_are_unique_across_tokens_and_indexed_positions() {
+        let wallet = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let keys =
+            [Address::repeat_byte(0x01), Address::repeat_byte(0x02), Address::repeat_byte(0x03)]
+                .into_iter()
+                .flat_map(|token| {
+                    [1, 2].map(|position| {
+                        derive_detail_key(
+                            &IndexingContractSetup::Address(AddressDetails {
+                                address: ValueOrArray::Value(token),
+                                indexed_filters: Some(vec![indexed_filter(position, wallet)]),
+                            }),
+                            "Transfer",
+                        )
+                    })
+                })
+                .collect::<std::collections::HashSet<_>>();
+
+        assert_eq!(keys.len(), 6);
+    }
+
+    #[test]
+    fn filter_mode_detail_has_an_exact_nonlegacy_key() {
+        let setup = IndexingContractSetup::Filter(FilterDetails {
+            events: ValueOrArray::Value("Transfer".to_string()),
+            indexed_filters: Some(indexed_filter(1, "wallet")),
+        });
+
+        assert_eq!(derive_detail_key(&setup, "Transfer"), "filter:transfer:i1:wallet");
+    }
+
+    #[test]
+    fn unfiltered_single_stream_uses_the_explicit_legacy_identity() {
+        let setup = IndexingContractSetup::Address(AddressDetails {
+            address: ValueOrArray::Value(Address::ZERO),
+            indexed_filters: None,
+        });
+
+        assert_eq!(derive_detail_key(&setup, "Transfer"), LEGACY_DETAIL_KEY);
+    }
+}
+
 #[derive(Clone)]
 pub struct TraceProcessingConfig {
     pub id: String,
@@ -468,10 +653,11 @@ pub struct TraceProcessingConfig {
 }
 
 impl TraceProcessingConfig {
-    pub async fn trigger_event(&self, fn_data: Vec<TraceResult>) {
+    pub async fn trigger_event(&self, fn_data: Vec<TraceResult>) -> Result<(), String> {
         // Trigger events for all registered events in this network's registry
         for event in &self.registry.events {
-            let _ = self.registry.trigger_event(&event.id, fn_data.clone()).await;
+            self.registry.trigger_event(&event.id, fn_data.clone()).await?;
         }
+        Ok(())
     }
 }
