@@ -1,0 +1,25 @@
+name: Canonical contribution ancestry
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "upstream/**"
+
+permissions:
+  contents: read
+
+jobs:
+  ancestry:
+    name: Canonical contribution ancestry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch protected downstream release tip
+        run: git fetch --no-tags origin refs/heads/fiet/v0.43:refs/remotes/origin/fiet/v0.43
+
+      - name: Reject downstream-only ancestry and files
+        run: python3 scripts/verify_canonical_contribution.py --downstream-tip origin/fiet/v0.43

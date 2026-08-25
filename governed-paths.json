@@ -1,0 +1,32 @@
+{
+  "$schema": "./schemas/governed-paths.schema.json",
+  "schema_version": "fiet-rindexer-governed-paths/v1",
+  "behavioral_paths": [
+    "Cargo.toml",
+    "Cargo.lock",
+    "core/Cargo.toml",
+    "core/src",
+    "cli/Cargo.toml",
+    "cli/src",
+    "e2e-tests/src",
+    "graphql/src"
+  ],
+  "non_behavioral_exclusions": [
+    ".github/workflows/canonical-contribution.yml",
+    ".github/workflows/canonical-drift.yml",
+    ".github/workflows/downstream-governance.yml",
+    "FIET-DOWNSTREAM.md",
+    "downstream-patch-inventory.json",
+    "downstream-patches.json",
+    "governed-paths.json",
+    "schemas/downstream-patch-inventory.schema.json",
+    "schemas/downstream-patches.schema.json",
+    "schemas/governed-paths.schema.json",
+    "scripts/report_canonical_drift.py",
+    "scripts/test_canonical_contribution.py",
+    "scripts/test_canonical_drift.py",
+    "scripts/test_downstream_governance.py",
+    "scripts/validate_downstream_governance.py",
+    "scripts/verify_canonical_contribution.py"
+  ]
+}

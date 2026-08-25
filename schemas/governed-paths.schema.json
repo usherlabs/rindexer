@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/usherlabs/rindexer/blob/fiet/v0.43/schemas/governed-paths.schema.json",
+  "title": "FIET rindexer governed behavioral paths",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schema_version", "behavioral_paths", "non_behavioral_exclusions"],
+  "properties": {
+    "$schema": {"const": "./schemas/governed-paths.schema.json"},
+    "schema_version": {"const": "fiet-rindexer-governed-paths/v1"},
+    "behavioral_paths": {"$ref": "#/$defs/paths"},
+    "non_behavioral_exclusions": {"$ref": "#/$defs/paths"}
+  },
+  "$defs": {
+    "paths": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+  }
+}
