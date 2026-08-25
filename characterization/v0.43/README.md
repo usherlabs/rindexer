@@ -11,6 +11,8 @@ Run the source characterization and its regression tests with:
 python3 -m unittest scripts/test_characterize_v043_baseline.py
 python3 scripts/characterize_v043_baseline.py \
   --output characterization/v0.43/vanilla-baseline-source-receipt.json
+cargo test --locked \
+  --manifest-path characterization/v0.43/public-api-probe/Cargo.toml
 ```
 
 The retained source receipt is diagnostic, not a release receipt. It records

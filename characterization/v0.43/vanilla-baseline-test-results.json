@@ -1,6 +1,6 @@
 {
   "schema_version": "fiet-rindexer-vanilla-test-results/v1",
-  "created_at": "2026-08-25T07:02:06Z",
+  "created_at": "2026-08-25T07:08:32Z",
   "source_under_test": {
     "canonical_commit": "4f441289b83855c357239d2729fb725a56c3060b",
     "canonical_root_tree": "80a2698f6be13949d84d920b01c02125af598d09",
@@ -43,6 +43,14 @@
       "failed": 0,
       "skipped": 4,
       "test_seconds": 58.715
+    },
+    {
+      "kind": "public_api_semantics",
+      "command": "cargo test --locked --manifest-path characterization/v0.43/public-api-probe/Cargo.toml",
+      "result": "pass",
+      "passed": 5,
+      "failed": 0,
+      "dependency_baseline": "canonical Cargo.lock Alloy 2.0.4"
     },
     {
       "kind": "canonical_ci_toolchain_drift_characterization",

@@ -1,0 +1,12 @@
+[package]
+name = "fiet-rindexer-v043-public-api-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+alloy = { version = "=2.0.4", features = ["full"] }
+rindexer = { path = "../../../core" }
+serde_yaml = "=0.9.34"
