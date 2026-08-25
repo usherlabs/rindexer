@@ -54,6 +54,7 @@ jobs:
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/hostedtoolcache/CodeQL
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.0
+      - run: rustup component add rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
@@ -81,6 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.0
+      - run: rustup component add rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
