@@ -27,6 +27,11 @@ both capabilities and known gaps. It must be combined with the pinned Rust
 unit/integration, process, and Docker E2E results before OpenSpec task 3.12 is
 complete. No result in this directory authorizes a behavioral patch by itself.
 
+`vanilla-baseline-failure-injection-receipt.json` binds the existing atomic
+PostgreSQL cursor regressions and the external legacy Rust-callback crash-window
+probe. The expected redelivery is not classified as a failure; a custom handler
+must own idempotent normative persistence until it opts into an atomic cursor API.
+
 `vanilla-baseline-test-results.json` accumulates the executable test layers.
 Its `remaining_before_immutable_characterization_receipt` list is normative for
 the characterization campaign and prevents a partial green result from being
