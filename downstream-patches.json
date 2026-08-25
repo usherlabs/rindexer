@@ -13,7 +13,7 @@
   },
   "release": {
     "branch": "fiet/v0.43",
-    "state": "audit",
+    "state": "candidate",
     "tag": null,
     "peeled_commit": null,
     "peeled_tree": null
@@ -55,36 +55,54 @@
       "title": "Terminate closed native-transfer processor channels",
       "owner": "usherlabs",
       "rationale": "Determine whether canonical v0.43 terminates or reports a closed native-transfer processor channel instead of hanging silently.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "ported",
+      "release_state": "active",
       "source": {"repository": "https://github.com/outerlook/rindexer", "branch": "fix/multi-indexed-filter", "commits": ["9d0efbf9872b08df778c530558bbb6ee4504cf3b"]},
       "affected_paths": ["core/src/indexer/native_transfer.rs"],
       "affected_behaviors": ["native-transfer processor-channel closure"],
       "canonical_baseline": {"tag": "v0.43.0", "commit": "4f441289b83855c357239d2729fb725a56c3060b", "tree": "80a2698f6be13949d84d920b01c02125af598d09"},
       "requirement_ids": ["rindexer-indexing-integrity:explicit-live-stream-completion-semantics"],
-      "regression_tests": [{"id": "native-transfer-channel-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
-      "upstream": {"status": "not_assessed"},
-      "evidence": [],
-      "downstream_commits": [],
-      "ancestry_markers": []
+      "regression_tests": [{"id": "native-transfer-channel-closure", "path": "core/src/indexer/native_transfer.rs", "command": "cargo nextest run -p rindexer indexer::native_transfer::tests::native_transfer_block_processor_exits_when_input_channel_is_closed -- --exact"}],
+      "upstream": {"status": "planned"},
+      "evidence": [
+        "characterization/v0.43/vanilla-baseline-receipt.json",
+        "characterization observation native_processor_closed_channel_sleeps=true",
+        "focused regression failed by timeout before a23ab7de52d32fb4abbb828fba5fb9a8aa784160 and passed after it",
+        "native-transfer module regression suite: 16 passed, 0 failed"
+      ],
+      "downstream_commits": ["ce060993cd6be950c8d64ae7a1eda5293dea8375"],
+      "ancestry_markers": ["FIET-PATCH:outerlook-9d0efbf-native-transfer-channel-closure"]
     },
     {
       "id": "outerlook-450ae49-multiple-indexed-filters",
       "title": "Evaluate every filter-mode indexed-filter alternative",
       "owner": "usherlabs",
       "rationale": "Determine whether canonical v0.43 evaluates later filter-mode alternatives instead of selecting only the first configured filter.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "ported",
+      "release_state": "active",
       "source": {"repository": "https://github.com/outerlook/rindexer", "branch": "fix/multi-indexed-filter", "commits": ["450ae497280bf8efee3644a23a6241fbf37a47e0"]},
       "affected_paths": ["Cargo.lock", "core/src/event/contract_setup.rs", "core/src/event/rindexer_event_filter.rs", "core/src/manifest/contract.rs", "core/src/provider.rs"],
       "affected_behaviors": ["multiple filter-mode indexed-filter alternatives"],
       "canonical_baseline": {"tag": "v0.43.0", "commit": "4f441289b83855c357239d2729fb725a56c3060b", "tree": "80a2698f6be13949d84d920b01c02125af598d09"},
       "requirement_ids": ["rindexer-indexing-integrity:multiple-filter-mode-indexed-filters", "rindexer-indexing-integrity:maker-filter-shape-compatibility"],
-      "regression_tests": [{"id": "filter-alternative-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
-      "upstream": {"status": "not_assessed"},
-      "evidence": [],
-      "downstream_commits": [],
-      "ancestry_markers": []
+      "regression_tests": [
+        {"id": "filter-alternative-selection", "path": "core/src/event/rindexer_event_filter.rs", "command": "cargo nextest run -p rindexer new_filter_"},
+        {"id": "filter-mode-manifest-retention", "path": "core/src/manifest/contract.rs", "command": "cargo nextest run -p rindexer filter_mode_setup_preserves_every_indexed_filter"},
+        {"id": "ordered-rpc-filter-queries", "path": "core/src/provider.rs", "command": "cargo nextest run -p rindexer rpc_provider_queries_every_same_event_filter_alternative"},
+        {"id": "filter-result-merge", "path": "core/src/provider.rs", "command": "cargo nextest run -p rindexer multiple_filter_results_"}
+      ],
+      "upstream": {"status": "planned"},
+      "evidence": [
+        "characterization/v0.43/vanilla-baseline-receipt.json",
+        "characterization observation filter_mode_uses_only_first_indexed_filter=true",
+        "same-event alternatives retain manifest order while unrelated event filters are excluded",
+        "RPC queries are issued in alternative order and overlapping logs deduplicate only with complete block-hash, transaction-hash, and log-index identity",
+        "Maker address-mode split-detail wallet filter shape remains unchanged",
+        "cargo test -p rindexer --lib: 771 passed, 4 ignored",
+        "cargo clippy -p rindexer --all-targets -- -D warnings"
+      ],
+      "downstream_commits": ["cc1c2f66f313e3ce4328cfbc37af4e6c62a30fb3"],
+      "ancestry_markers": ["FIET-PATCH:outerlook-450ae49-multiple-indexed-filters"]
     },
     {
       "id": "outerlook-3003dca-live-native-transfers",
@@ -114,54 +132,81 @@
       "title": "Persist exact per-detail coverage cursors",
       "owner": "usherlabs",
       "rationale": "Establish exact stream-table, network, and detail-key durability across every progress path, including Bloom-negative ranges and restart.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "ported",
+      "release_state": "active",
       "source": {"repository": "https://github.com/outerlook/rindexer", "branch": "fix/multi-indexed-filter", "commits": ["85b7dadf3c54f8a201e60b2ed7cb17389fd30da9"]},
-      "affected_paths": ["core/src/database/generate.rs", "core/src/event/config.rs", "core/src/indexer/last_synced.rs", "core/src/indexer/start.rs"],
+      "affected_paths": ["core/src/database/clickhouse/client.rs", "core/src/database/clickhouse/generate.rs", "core/src/database/generate.rs", "core/src/database/postgres/client.rs", "core/src/event/callback_registry.rs", "core/src/event/config.rs", "core/src/indexer/last_synced.rs", "core/src/indexer/native_transfer.rs", "core/src/indexer/no_code.rs", "core/src/indexer/process.rs", "core/src/indexer/start.rs", "core/src/indexer/tables.rs"],
       "affected_behaviors": ["exact per-manifest-detail durable coverage", "Bloom-negative empty-block cursor persistence", "restart from exact detail progress"],
       "canonical_baseline": {"tag": "v0.43.0", "commit": "4f441289b83855c357239d2729fb725a56c3060b", "tree": "80a2698f6be13949d84d920b01c02125af598d09"},
       "requirement_ids": ["rindexer-indexing-integrity:exact-durable-detail-coverage-cursor", "rindexer-indexing-integrity:bloom-negative-empty-range-persistence", "rindexer-indexing-integrity:ordered-progress-cannot-overtake-normative-persistence"],
-      "regression_tests": [{"id": "detail-cursor-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
-      "upstream": {"status": "not_assessed"},
-      "evidence": [],
-      "downstream_commits": [],
-      "ancestry_markers": []
+      "regression_tests": [
+        {"id": "detail-key-fixtures", "path": "core/src/event/config.rs", "command": "cargo nextest run -p rindexer detail_key_tests"},
+        {"id": "exact-cursor-schema", "path": "core/src/database/generate.rs", "command": "cargo nextest run -p rindexer event_cursor_ddl_migrates_to_exact_identity_without_fanning_out_legacy_progress"},
+        {"id": "exact-cursor-atomicity-and-reorg", "path": "core/tests/postgres_atomic_cursor.rs", "command": "cargo nextest run -p rindexer --test postgres_atomic_cursor"},
+        {"id": "bloom-negative-durable-progress", "path": "core/src/indexer/process.rs", "command": "cargo nextest run -p rindexer indexer::process::tests::"}
+      ],
+      "upstream": {"status": "planned"},
+      "evidence": [
+        "characterization/v0.43/vanilla-baseline-receipt.json",
+        "Outerlook 85b7dad identifies the per-detail cursor requirement but its legacy fan-out is intentionally replaced by fail-closed migration semantics",
+        "PostgreSQL identity is (stream cursor table, network, detail_key); new exact members seed at zero and latest_block or member MAX is never consulted",
+        "legacy __event__ and filter-specific cursor rows cannot coexist, including concurrent first-seed startup",
+        "Bloom-negative, normal empty-range, callback, atomic batch, file, and reorg paths preserve exact durable ordering before in-memory progress",
+        "PoolManager Swap and Wallet ERC20 detail-key fixtures match Maker byte-for-byte",
+        "cargo test -p rindexer --test postgres_atomic_cursor: 8 passed",
+        "cargo test -p rindexer --lib: 775 passed, 4 ignored",
+        "cargo clippy -p rindexer --all-targets -- -D warnings"
+      ],
+      "downstream_commits": ["5796e768e4554783bf7a37e24c97901fe4116aa0"],
+      "ancestry_markers": ["FIET-PATCH:outerlook-85b7dad-per-detail-cursors"]
     },
     {
       "id": "outerlook-cbb88d2-live-stream-eof",
       "title": "Distinguish cancellation from unexpected live-stream EOF",
       "owner": "usherlabs",
       "rationale": "Determine whether canonical v0.43 reports unexpected live-stream completion as a terminal error while preserving requested cancellation.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "ported",
+      "release_state": "active",
       "source": {"repository": "https://github.com/outerlook/rindexer", "branch": "fix/multi-indexed-filter", "commits": ["cbb88d2eed9f33792a4be2da5bc2e78c82a398aa"]},
       "affected_paths": ["cli/src/commands/start.rs", "core/src/generator/build.rs", "core/src/indexer/fetch_logs.rs", "core/src/indexer/process.rs"],
       "affected_behaviors": ["requested cancellation versus unexpected live-stream EOF"],
       "canonical_baseline": {"tag": "v0.43.0", "commit": "4f441289b83855c357239d2729fb725a56c3060b", "tree": "80a2698f6be13949d84d920b01c02125af598d09"},
       "requirement_ids": ["rindexer-indexing-integrity:explicit-live-stream-completion-semantics", "rindexer-indexing-integrity:maker-controlled-embedded-lifecycle"],
-      "regression_tests": [{"id": "live-stream-eof-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
-      "upstream": {"status": "not_assessed"},
-      "evidence": [],
-      "downstream_commits": [],
-      "ancestry_markers": []
+      "regression_tests": [{"id": "live-stream-eof-completion", "path": "core/src/indexer/process.rs", "command": "cargo nextest run -p rindexer indexer::process::tests::"}],
+      "upstream": {"status": "planned"},
+      "evidence": [
+        "characterization/v0.43/vanilla-baseline-receipt.json",
+        "characterization observation unexpected_event_stream_eof_returns_success=true",
+        "process completion regressions: 6 passed, 0 failed",
+        "requested cancellation, process shutdown, finite runs, and forced historical completion remain successful",
+        "cargo clippy -p rindexer --lib -- -D warnings"
+      ],
+      "downstream_commits": ["1777b07112d6699a9f78ae271cb6a0ece5ef6703"],
+      "ancestry_markers": ["FIET-PATCH:outerlook-cbb88d2-live-stream-eof"]
     },
     {
       "id": "outerlook-986998e-live-retry-ranges",
       "title": "Preserve valid live retry ranges",
       "owner": "usherlabs",
       "rationale": "Determine whether canonical v0.43 preserves inclusive and exclusive retry boundaries without reversed, skipped, or duplicated acknowledged progress.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "ported",
+      "release_state": "active",
       "source": {"repository": "https://github.com/outerlook/rindexer", "branch": "fix/multi-indexed-filter", "commits": ["986998e3d98f04fd1a4aa749e9bf9deb88ff63ce"]},
       "affected_paths": ["core/src/indexer/fetch_logs.rs"],
       "affected_behaviors": ["valid live retry range construction"],
       "canonical_baseline": {"tag": "v0.43.0", "commit": "4f441289b83855c357239d2729fb725a56c3060b", "tree": "80a2698f6be13949d84d920b01c02125af598d09"},
       "requirement_ids": ["rindexer-indexing-integrity:retry-range-integrity"],
-      "regression_tests": [{"id": "retry-range-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
-      "upstream": {"status": "not_assessed"},
-      "evidence": [],
-      "downstream_commits": [],
-      "ancestry_markers": []
+      "regression_tests": [{"id": "live-retry-range-integrity", "path": "core/src/indexer/fetch_logs.rs", "command": "cargo nextest run -p rindexer live_retry_"}],
+      "upstream": {"status": "planned"},
+      "evidence": [
+        "characterization/v0.43/vanilla-baseline-receipt.json",
+        "characterization observation retry_boundaries_have_existing_regressions=false",
+        "live retry plan regressions: 3 passed, 0 failed",
+        "fetch-log module regressions: 48 passed, 0 failed",
+        "cargo clippy -p rindexer --lib -- -D warnings"
+      ],
+      "downstream_commits": ["78709a4bcb97f7789af0a31154081feeced7e8c9"],
+      "ancestry_markers": ["FIET-PATCH:outerlook-986998e-live-retry-ranges"]
     },
     {
       "id": "outerlook-e4c4b14-merge-head",
@@ -237,7 +282,7 @@
         "qualification/v0.43/embedded-lifecycle-receipt.json",
         "scripts/test_qualify_embedded_lifecycle.py"
       ],
-      "downstream_commits": ["763182eb0e7994872c9ae3fdf8ebbdbf0629eb08"],
+      "downstream_commits": ["fd7c2d7173afee8579f6aa6560d678d334445b73"],
       "ancestry_markers": ["FIET-PATCH:maker-controlled-embedded-lifecycle"]
     }
   ]
