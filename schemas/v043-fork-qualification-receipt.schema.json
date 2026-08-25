@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/usherlabs/rindexer/blob/fiet/v0.43/schemas/v043-fork-qualification-receipt.schema.json",
+  "title": "FIET downstream rindexer v0.43 qualification receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "sealed_at",
+    "canonical_source",
+    "downstream_source",
+    "toolchain",
+    "qualification_runs",
+    "artifacts",
+    "verdict",
+    "release_authorized"
+  ],
+  "properties": {
+    "$schema": {"const": "../../../schemas/v043-fork-qualification-receipt.schema.json"},
+    "schema_version": {"const": "fiet-rindexer-v043-fork-qualification-receipt/v1"},
+    "sealed_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "canonical_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "commit", "tree"],
+      "properties": {
+        "repository": {"const": "https://github.com/joshstevens19/rindexer"},
+        "tag": {"const": "v0.43.0"},
+        "commit": {"const": "4f441289b83855c357239d2729fb725a56c3060b"},
+        "tree": {"const": "80a2698f6be13949d84d920b01c02125af598d09"}
+      }
+    },
+    "downstream_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "branch", "commit", "tree"],
+      "properties": {
+        "repository": {"const": "https://github.com/usherlabs/rindexer"},
+        "branch": {"const": "fiet/candidate-v0.43.0-1"},
+        "commit": {"$ref": "#/$defs/gitOid"},
+        "tree": {"$ref": "#/$defs/gitOid"}
+      }
+    },
+    "toolchain": {"type": "object", "minProperties": 1},
+    "qualification_runs": {
+      "type": "array",
+      "minItems": 10,
+      "items": {
+        "type": "object",
+        "required": ["kind", "command", "result"],
+        "properties": {
+          "kind": {"type": "string", "minLength": 1},
+          "command": {"type": "string", "minLength": 1},
+          "result": {"const": "pass"},
+          "tests": {"type": "integer", "minimum": 0},
+          "skipped": {"type": "integer", "minimum": 0},
+          "notes": {"type": "string", "minLength": 1},
+          "evidence_url": {"type": "string", "pattern": "^https://"}
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inventory", "ledger", "governed_paths", "embedded_lifecycle_receipt", "test_results"],
+      "properties": {
+        "inventory": {"$ref": "#/$defs/artifact"},
+        "ledger": {"$ref": "#/$defs/artifact"},
+        "governed_paths": {"$ref": "#/$defs/artifact"},
+        "embedded_lifecycle_receipt": {"$ref": "#/$defs/artifact"},
+        "test_results": {"$ref": "#/$defs/artifact"}
+      }
+    },
+    "verdict": {"const": "qualified"},
+    "release_authorized": {"const": false}
+  },
+  "$defs": {
+    "gitOid": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}

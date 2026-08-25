@@ -1,5 +1,7 @@
 # Changelog
 
+- Added a hash-bound FIET downstream qualification receipt covering governance, exact cursor ordering, lifecycle, stream failure, default/all-feature suites, and Docker E2E evidence before release promotion.
+
 ### Breaking changes
 -------------------------------------------------
 - breaking: **Exact Rust-indexing detail cursors** — `rindexer_internal` event cursor tables now key progress by `network` and opaque `detail_key`; multiple same-event filter alternatives retain manifest order in that key, and downstream Rust callbacks and existing databases must migrate or replay each manifest detail instead of treating a network-wide cursor as exact coverage.

@@ -47,6 +47,11 @@ jobs:
               -s schemas/v043-characterization-receipt.schema.json \
               -d characterization/v0.43/vanilla-baseline-receipt.json
           fi
+          if test -f qualification/v0.43/candidate-fork-qualification-receipt.json; then
+            npx --yes ajv-cli@5.0.0 validate --spec=draft2020 --strict=true \
+              -s schemas/v043-fork-qualification-receipt.schema.json \
+              -d qualification/v0.43/candidate-fork-qualification-receipt.json
+          fi
 
       - name: Run governance regression tests
         run: >-
@@ -56,6 +61,7 @@ jobs:
           scripts/test_canonical_contribution.py
           scripts/test_characterize_v043_baseline.py
           scripts/test_seal_v043_characterization.py
+          scripts/test_seal_v043_fork_qualification.py
 
       - name: Characterize untouched v0.43 source behavior
         run: >-
@@ -96,6 +102,10 @@ jobs:
       - name: Verify sealed characterization evidence
         if: ${{ hashFiles('characterization/v0.43/vanilla-baseline-receipt.json') != '' }}
         run: python3 scripts/seal_v043_characterization.py --verify
+
+      - name: Verify sealed fork qualification evidence
+        if: ${{ hashFiles('qualification/v0.43/candidate-fork-qualification-receipt.json') != '' }}
+        run: python3 scripts/seal_v043_fork_qualification.py --verify
 
       - name: Validate baseline, inventory, ledger, ancestry, and governed paths
         run: python3 scripts/validate_downstream_governance.py
