@@ -126,6 +126,29 @@ class DownstreamGovernanceTests(unittest.TestCase):
         self.ledger = _ledger(self.inventory)
         self.paths = _governed_paths()
 
+    def test_outerlook_merge_head_has_no_independent_tree_delta(self) -> None:
+        receipt_path = (
+            REPO_ROOT
+            / "characterization"
+            / "v0.43"
+            / "outerlook-merge-head-audit.json"
+        )
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(
+            receipt["merge_commit"],
+            "e4c4b14b9a0d067da12778ff959053a01c700d88",
+        )
+        self.assertEqual(
+            receipt["parents"],
+            [
+                "cbb88d2eed9f33792a4be2da5bc2e78c82a398aa",
+                "986998e3d98f04fd1a4aa749e9bf9deb88ff63ce",
+            ],
+        )
+        self.assertEqual(receipt["merge_tree"], receipt["second_parent_tree"])
+        self.assertFalse(receipt["independent_tree_delta"])
+
     def test_pending_inventory_is_valid_for_audit_but_not_release(self) -> None:
         self.assertEqual(validate_governance(self.ledger, self.inventory, self.paths, REPO_ROOT), [])
         errors = validate_governance(self.ledger, self.inventory, self.paths, REPO_ROOT, release=True)
