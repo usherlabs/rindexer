@@ -191,6 +191,16 @@ class DownstreamGovernanceTests(unittest.TestCase):
         errors = validate_governance(self.ledger, self.inventory, self.paths, REPO_ROOT, release=True)
         self.assertTrue(any("pending" in error for error in errors), errors)
 
+    def test_candidate_state_rejects_pending_inventory(self) -> None:
+        self.ledger["release"]["state"] = "candidate"
+
+        errors = validate_governance(self.ledger, self.inventory, self.paths, REPO_ROOT)
+
+        self.assertTrue(
+            any("candidate state is ineligible while patches remain pending" in error for error in errors),
+            errors,
+        )
+
     def test_duplicate_patch_ids_are_rejected(self) -> None:
         self.ledger["patches"].append(copy.deepcopy(self.ledger["patches"][0]))
         errors = validate_governance(self.ledger, self.inventory, self.paths, REPO_ROOT)

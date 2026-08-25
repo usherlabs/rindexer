@@ -375,8 +375,15 @@ def validate_governance(
         if patch_id in previous_by_id:
             errors.extend(f"patch {patch_id}: {error}" for error in validate_transition(previous_by_id[patch_id], patch))
 
+    pending = [str(patch.get("id")) for patch in patches if patch.get("audit_disposition") == "pending"]
+    release_stage = _mapping(ledger.get("release")).get("state")
+    if release_stage in {"candidate", "qualified"} and pending:
+        errors.append(
+            f"{release_stage} state is ineligible while patches remain pending: "
+            + ", ".join(sorted(pending))
+        )
+
     if release:
-        pending = [str(patch.get("id")) for patch in patches if patch.get("audit_disposition") == "pending"]
         if pending:
             errors.append(f"release is ineligible while patches remain pending: {', '.join(sorted(pending))}")
         errors.extend(_validate_release(ledger, repo_root, verify_tag))
