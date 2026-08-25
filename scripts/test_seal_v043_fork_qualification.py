@@ -12,6 +12,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 from seal_v043_fork_qualification import (  # noqa: E402
     ForkQualificationSealError,
     build_fork_qualification_receipt,
+    stage_candidate_governance_snapshots,
     verify_fork_qualification_receipt,
 )
 
@@ -23,15 +24,35 @@ class SealV043ForkQualificationTests(unittest.TestCase):
         qualification = self.repo_root / "qualification" / "v0.43"
         qualification.mkdir(parents=True)
 
-        self.artifact_paths = {
+        self.live_paths = {
             "inventory": self.repo_root / "downstream-patch-inventory.json",
             "ledger": self.repo_root / "downstream-patches.json",
             "governed_paths": self.repo_root / "governed-paths.json",
+        }
+        self.artifact_paths = {
+            "inventory": qualification / "candidate-downstream-patch-inventory.json",
+            "ledger": qualification / "candidate-downstream-patches.json",
+            "governed_paths": qualification / "candidate-governed-paths.json",
             "embedded_lifecycle_receipt": qualification
             / "candidate-embedded-lifecycle-receipt.json",
         }
-        for name, path in self.artifact_paths.items():
-            path.write_text(json.dumps({"artifact": name}) + "\n", encoding="utf-8")
+        artifact_values = {
+            "inventory": {"artifact": "inventory"},
+            "ledger": {
+                "schema_version": "fiet-rindexer-downstream-patch-ledger/v1",
+                "release": {"state": "candidate"},
+                "patches": [{"audit_disposition": "ported"}],
+            },
+            "governed_paths": {"artifact": "governed_paths"},
+            "embedded_lifecycle_receipt": {"verdict": "pass"},
+        }
+        for name, path in self.live_paths.items():
+            path.write_text(json.dumps(artifact_values[name]) + "\n", encoding="utf-8")
+        stage_candidate_governance_snapshots(self.repo_root)
+        self.artifact_paths["embedded_lifecycle_receipt"].write_text(
+            json.dumps(artifact_values["embedded_lifecycle_receipt"]) + "\n",
+            encoding="utf-8",
+        )
 
         self.results_path = qualification / "candidate-test-results.json"
         self.results = {
@@ -131,6 +152,24 @@ class SealV043ForkQualificationTests(unittest.TestCase):
 
         errors = verify_fork_qualification_receipt(self.repo_root, receipt)
         self.assertIn("ledger SHA-256 mismatch", errors)
+
+    def test_later_live_release_metadata_does_not_rewrite_candidate_snapshot(self):
+        receipt = build_fork_qualification_receipt(
+            self.repo_root, self.results_path
+        )
+        live_ledger = json.loads(self.live_paths["ledger"].read_text())
+        live_ledger["release"]["state"] = "qualified"
+        self.live_paths["ledger"].write_text(
+            json.dumps(live_ledger) + "\n", encoding="utf-8"
+        )
+
+        self.assertEqual(
+            verify_fork_qualification_receipt(self.repo_root, receipt), []
+        )
+        with self.assertRaisesRegex(
+            ForkQualificationSealError, "refusing to overwrite retained candidate ledger"
+        ):
+            stage_candidate_governance_snapshots(self.repo_root)
 
     def test_receipt_runs_must_match_test_results(self):
         receipt = build_fork_qualification_receipt(
