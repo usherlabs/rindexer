@@ -98,10 +98,11 @@
         "same-event alternatives retain manifest order while unrelated event filters are excluded",
         "RPC queries are issued in alternative order and overlapping logs deduplicate only with complete block-hash, transaction-hash, and log-index identity",
         "Maker address-mode split-detail wallet filter shape remains unchanged",
+        "combined candidate compile exposed the single-filter detail-key assumption and filter alternative detail-key regressions passed after 04bc9029e35aba3216f7669e6cd6e3aabab0b5d3",
         "cargo test -p rindexer --lib: 771 passed, 4 ignored",
         "cargo clippy -p rindexer --all-targets -- -D warnings"
       ],
-      "downstream_commits": ["cc1c2f66f313e3ce4328cfbc37af4e6c62a30fb3"],
+      "downstream_commits": ["cc1c2f66f313e3ce4328cfbc37af4e6c62a30fb3", "04bc9029e35aba3216f7669e6cd6e3aabab0b5d3"],
       "ancestry_markers": ["FIET-PATCH:outerlook-450ae49-multiple-indexed-filters"]
     },
     {
@@ -153,11 +154,12 @@
         "legacy __event__ and filter-specific cursor rows cannot coexist, including concurrent first-seed startup",
         "Bloom-negative, normal empty-range, callback, atomic batch, file, and reorg paths preserve exact durable ordering before in-memory progress",
         "PoolManager Swap and Wallet ERC20 detail-key fixtures match Maker byte-for-byte",
+        "combined candidate filter-alternative detail-key regressions passed after 04bc9029e35aba3216f7669e6cd6e3aabab0b5d3",
         "cargo test -p rindexer --test postgres_atomic_cursor: 8 passed",
         "cargo test -p rindexer --lib: 775 passed, 4 ignored",
         "cargo clippy -p rindexer --all-targets -- -D warnings"
       ],
-      "downstream_commits": ["5796e768e4554783bf7a37e24c97901fe4116aa0"],
+      "downstream_commits": ["5796e768e4554783bf7a37e24c97901fe4116aa0", "04bc9029e35aba3216f7669e6cd6e3aabab0b5d3"],
       "ancestry_markers": ["FIET-PATCH:outerlook-85b7dad-per-detail-cursors"]
     },
     {
