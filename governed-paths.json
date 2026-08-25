@@ -12,9 +12,12 @@
     "graphql/src"
   ],
   "non_behavioral_exclusions": [
+    ".github/workflows/ci.yml",
     ".github/workflows/canonical-contribution.yml",
     ".github/workflows/canonical-drift.yml",
     ".github/workflows/downstream-governance.yml",
+    ".github/workflows/e2e.yml",
+    ".github/workflows/release.yml",
     "FIET-DOWNSTREAM.md",
     "downstream-patch-inventory.json",
     "downstream-patches.json",
@@ -27,6 +30,7 @@
     "scripts/test_canonical_drift.py",
     "scripts/test_downstream_governance.py",
     "scripts/validate_downstream_governance.py",
-    "scripts/verify_canonical_contribution.py"
+    "scripts/verify_canonical_contribution.py",
+    "rust-toolchain.toml"
   ]
 }
