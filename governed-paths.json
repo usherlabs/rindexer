@@ -25,12 +25,15 @@
     "schemas/downstream-patch-inventory.schema.json",
     "schemas/downstream-patches.schema.json",
     "schemas/governed-paths.schema.json",
+    "schemas/v043-characterization-receipt.schema.json",
     "scripts/report_canonical_drift.py",
     "scripts/characterize_v043_baseline.py",
     "scripts/characterize_v043_process.py",
+    "scripts/seal_v043_characterization.py",
     "scripts/test_canonical_contribution.py",
     "scripts/test_characterize_v043_baseline.py",
     "scripts/test_characterize_v043_process.py",
+    "scripts/test_seal_v043_characterization.py",
     "scripts/test_canonical_drift.py",
     "scripts/test_downstream_governance.py",
     "scripts/validate_downstream_governance.py",
@@ -44,6 +47,7 @@
     "characterization/v0.43/vanilla-baseline-process-receipt.json",
     "characterization/v0.43/vanilla-baseline-source-receipt.json",
     "characterization/v0.43/vanilla-baseline-test-results.json",
+    "characterization/v0.43/vanilla-baseline-receipt.json",
     "rust-toolchain.toml"
   ]
 }
