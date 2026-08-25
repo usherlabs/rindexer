@@ -1045,6 +1045,40 @@ mod tests {
     }
 
     #[test]
+    fn unexpected_live_stream_eof_reaches_a_nonzero_process_exit() {
+        const CHILD_ENV: &str = "RINDEXER_UNEXPECTED_LIVE_EOF_PROCESS_CHILD";
+        const TEST_NAME: &str =
+            "indexer::process::tests::unexpected_live_stream_eof_reaches_a_nonzero_process_exit";
+
+        if std::env::var_os(CHILD_ENV).is_some() {
+            let error = ensure_logs_stream_end_is_expected(
+                true,
+                false,
+                false,
+                true,
+                "WalletERC20Transfers::Transfer::mainnet",
+                "0xabc:i1:0xwallet",
+            )
+            .expect_err("unrequested live EOF must fail");
+            eprintln!("FIET_UNEXPECTED_LIVE_EOF={error}");
+            std::process::exit(67);
+        }
+
+        let output = std::process::Command::new(
+            std::env::current_exe().expect("current test executable must resolve"),
+        )
+        .args(["--exact", TEST_NAME, "--nocapture"])
+        .env(CHILD_ENV, "1")
+        .output()
+        .expect("unexpected-EOF child process must start");
+
+        assert_eq!(output.status.code(), Some(67));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("FIET_UNEXPECTED_LIVE_EOF="), "stderr: {stderr}");
+        assert!(stderr.contains("live logs stream ended unexpectedly"), "stderr: {stderr}");
+    }
+
+    #[test]
     fn requested_or_finite_stream_completion_is_successful() {
         assert!(
             ensure_logs_stream_end_is_expected(true, false, true, true, "event", "detail").is_ok()
