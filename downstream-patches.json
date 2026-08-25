@@ -141,18 +141,24 @@
       "title": "Preserve valid live retry ranges",
       "owner": "usherlabs",
       "rationale": "Determine whether canonical v0.43 preserves inclusive and exclusive retry boundaries without reversed, skipped, or duplicated acknowledged progress.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "ported",
+      "release_state": "active",
       "source": {"repository": "https://github.com/outerlook/rindexer", "branch": "fix/multi-indexed-filter", "commits": ["986998e3d98f04fd1a4aa749e9bf9deb88ff63ce"]},
       "affected_paths": ["core/src/indexer/fetch_logs.rs"],
       "affected_behaviors": ["valid live retry range construction"],
       "canonical_baseline": {"tag": "v0.43.0", "commit": "4f441289b83855c357239d2729fb725a56c3060b", "tree": "80a2698f6be13949d84d920b01c02125af598d09"},
       "requirement_ids": ["rindexer-indexing-integrity:retry-range-integrity"],
-      "regression_tests": [{"id": "retry-range-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
-      "upstream": {"status": "not_assessed"},
-      "evidence": [],
-      "downstream_commits": [],
-      "ancestry_markers": []
+      "regression_tests": [{"id": "live-retry-range-integrity", "path": "core/src/indexer/fetch_logs.rs", "command": "cargo test -p rindexer live_retry_ --lib"}],
+      "upstream": {"status": "planned"},
+      "evidence": [
+        "characterization/v0.43/vanilla-baseline-receipt.json",
+        "characterization observation retry_boundaries_have_existing_regressions=false",
+        "live retry plan regressions: 3 passed, 0 failed",
+        "fetch-log module regressions: 48 passed, 0 failed",
+        "cargo clippy -p rindexer --lib -- -D warnings"
+      ],
+      "downstream_commits": ["b4798094735bf00571745d8a82b1b7d7e397436d"],
+      "ancestry_markers": ["FIET-PATCH:outerlook-986998e-live-retry-ranges"]
     },
     {
       "id": "outerlook-e4c4b14-merge-head",
