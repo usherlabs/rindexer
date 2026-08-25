@@ -249,6 +249,34 @@ async fn process_event_logs(
         joined.map_err(|e| Box::new(ProviderError::BatchRequestFailed(e)))?;
     }
 
+    ensure_logs_stream_end_is_expected(
+        config.live_indexing(),
+        force_no_live_indexing,
+        config.cancel_token().is_cancelled(),
+        is_running(),
+        &config.info_log_name(),
+        config.id(),
+    )?;
+
+    Ok(())
+}
+
+fn ensure_logs_stream_end_is_expected(
+    live_indexing: bool,
+    force_no_live_indexing: bool,
+    cancellation_requested: bool,
+    process_running: bool,
+    info_log_name: &str,
+    stream_id: &str,
+) -> Result<(), Box<ProviderError>> {
+    let unexpected_live_eof =
+        live_indexing && !force_no_live_indexing && !cancellation_requested && process_running;
+    if unexpected_live_eof {
+        return Err(Box::new(ProviderError::CustomError(format!(
+            "{info_log_name} - live logs stream ended unexpectedly for stream {stream_id}"
+        ))));
+    }
+
     Ok(())
 }
 
@@ -954,6 +982,38 @@ mod tests {
         Arc,
     };
     use std::task::Poll;
+
+    #[test]
+    fn unexpected_live_stream_eof_is_an_identified_error() {
+        let error = ensure_logs_stream_end_is_expected(
+            true,
+            false,
+            false,
+            true,
+            "WalletERC20Transfers::Transfer::mainnet",
+            "0xabc:i1:0xwallet",
+        )
+        .expect_err("unrequested live EOF must fail")
+        .to_string();
+
+        assert!(error.contains("WalletERC20Transfers::Transfer::mainnet"));
+        assert!(error.contains("0xabc:i1:0xwallet"));
+        assert!(error.contains("live logs stream ended unexpectedly"));
+    }
+
+    #[test]
+    fn requested_or_finite_stream_completion_is_successful() {
+        assert!(
+            ensure_logs_stream_end_is_expected(true, false, true, true, "event", "detail").is_ok()
+        );
+        assert!(ensure_logs_stream_end_is_expected(true, false, false, false, "event", "detail")
+            .is_ok());
+        assert!(ensure_logs_stream_end_is_expected(false, false, false, true, "event", "detail")
+            .is_ok());
+        assert!(
+            ensure_logs_stream_end_is_expected(true, true, false, true, "event", "detail").is_ok()
+        );
+    }
 
     #[tokio::test]
     async fn inline_drain_keeps_queue_bounded_under_live_indexing() {
