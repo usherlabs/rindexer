@@ -123,18 +123,24 @@
       "title": "Distinguish cancellation from unexpected live-stream EOF",
       "owner": "usherlabs",
       "rationale": "Determine whether canonical v0.43 reports unexpected live-stream completion as a terminal error while preserving requested cancellation.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "ported",
+      "release_state": "active",
       "source": {"repository": "https://github.com/outerlook/rindexer", "branch": "fix/multi-indexed-filter", "commits": ["cbb88d2eed9f33792a4be2da5bc2e78c82a398aa"]},
       "affected_paths": ["cli/src/commands/start.rs", "core/src/generator/build.rs", "core/src/indexer/fetch_logs.rs", "core/src/indexer/process.rs"],
       "affected_behaviors": ["requested cancellation versus unexpected live-stream EOF"],
       "canonical_baseline": {"tag": "v0.43.0", "commit": "4f441289b83855c357239d2729fb725a56c3060b", "tree": "80a2698f6be13949d84d920b01c02125af598d09"},
       "requirement_ids": ["rindexer-indexing-integrity:explicit-live-stream-completion-semantics", "rindexer-indexing-integrity:maker-controlled-embedded-lifecycle"],
-      "regression_tests": [{"id": "live-stream-eof-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
-      "upstream": {"status": "not_assessed"},
-      "evidence": [],
-      "downstream_commits": [],
-      "ancestry_markers": []
+      "regression_tests": [{"id": "live-stream-eof-completion", "path": "core/src/indexer/process.rs", "command": "cargo test -p rindexer indexer::process::tests:: --lib"}],
+      "upstream": {"status": "planned"},
+      "evidence": [
+        "characterization/v0.43/vanilla-baseline-receipt.json",
+        "characterization observation unexpected_event_stream_eof_returns_success=true",
+        "process completion regressions: 6 passed, 0 failed",
+        "requested cancellation, process shutdown, finite runs, and forced historical completion remain successful",
+        "cargo clippy -p rindexer --lib -- -D warnings"
+      ],
+      "downstream_commits": ["3c11c268e885bb23640248a075a6edd2f6d970fa"],
+      "ancestry_markers": ["FIET-PATCH:outerlook-cbb88d2-live-stream-eof"]
     },
     {
       "id": "outerlook-986998e-live-retry-ranges",
