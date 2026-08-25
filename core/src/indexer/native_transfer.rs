@@ -392,15 +392,19 @@ pub async fn native_transfer_block_processor(
         }
 
         // Fetch more only if buffer was processed ok last time and cleared.
-        let recv = if buffer.is_empty() {
+        let was_empty = buffer.is_empty();
+        let recv = if was_empty {
             block_rx.recv_many(&mut buffer, concurrent_requests).await
         } else {
             buffer.len()
         };
 
-        if recv == 0 {
-            sleep(Duration::from_secs(1)).await;
-            continue;
+        if recv == 0 && was_empty {
+            info!(
+                network = %network_name,
+                "Native transfer block processor completed because its input channel closed",
+            );
+            break Ok(());
         }
 
         let processed_block = native_transfer_block_consumer(
@@ -824,6 +828,24 @@ mod tests {
             stream_last_synced_block_file_path: None,
             cancel_token: CancellationToken::new(),
         })
+    }
+
+    #[tokio::test]
+    async fn native_transfer_block_processor_exits_when_input_channel_is_closed() {
+        crate::_test_reset_shutdown_flag();
+        let provider = Arc::new(MockChainProvider::new(1));
+        let config = make_trace_config_async().await;
+        let (block_tx, block_rx) = mpsc::channel(1);
+        drop(block_tx);
+
+        let outcome = tokio::time::timeout(
+            Duration::from_millis(100),
+            native_transfer_block_processor("ethereum".to_string(), provider, config, block_rx),
+        )
+        .await;
+
+        let processor_result = outcome.expect("closed input channel must terminate the processor");
+        assert!(processor_result.is_ok(), "closed historical channel should complete cleanly");
     }
 
     /// Build a block with a single native-transfer transaction (value > 0, empty input, has to).
