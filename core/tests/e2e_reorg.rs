@@ -313,9 +313,10 @@ impl TestEnv {
         ch.execute(
             "CREATE TABLE IF NOT EXISTS rindexer_internal.test_schema_ping (
                  network String,
+                 detail_key String,
                  last_synced_block UInt64
              ) ENGINE = ReplacingMergeTree
-             ORDER BY (network)",
+             ORDER BY (network, detail_key)",
         )
         .await
         .expect("failed to create test_schema_ping checkpoint table in CH");
