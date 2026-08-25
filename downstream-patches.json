@@ -69,18 +69,31 @@
       "title": "Evaluate every filter-mode indexed-filter alternative",
       "owner": "usherlabs",
       "rationale": "Determine whether canonical v0.43 evaluates later filter-mode alternatives instead of selecting only the first configured filter.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "ported",
+      "release_state": "active",
       "source": {"repository": "https://github.com/outerlook/rindexer", "branch": "fix/multi-indexed-filter", "commits": ["450ae497280bf8efee3644a23a6241fbf37a47e0"]},
       "affected_paths": ["Cargo.lock", "core/src/event/contract_setup.rs", "core/src/event/rindexer_event_filter.rs", "core/src/manifest/contract.rs", "core/src/provider.rs"],
       "affected_behaviors": ["multiple filter-mode indexed-filter alternatives"],
       "canonical_baseline": {"tag": "v0.43.0", "commit": "4f441289b83855c357239d2729fb725a56c3060b", "tree": "80a2698f6be13949d84d920b01c02125af598d09"},
       "requirement_ids": ["rindexer-indexing-integrity:multiple-filter-mode-indexed-filters", "rindexer-indexing-integrity:maker-filter-shape-compatibility"],
-      "regression_tests": [{"id": "filter-alternative-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
-      "upstream": {"status": "not_assessed"},
-      "evidence": [],
-      "downstream_commits": [],
-      "ancestry_markers": []
+      "regression_tests": [
+        {"id": "filter-alternative-selection", "path": "core/src/event/rindexer_event_filter.rs", "command": "cargo test -p rindexer new_filter_ --lib"},
+        {"id": "filter-mode-manifest-retention", "path": "core/src/manifest/contract.rs", "command": "cargo test -p rindexer filter_mode_setup_preserves_every_indexed_filter --lib"},
+        {"id": "ordered-rpc-filter-queries", "path": "core/src/provider.rs", "command": "cargo test -p rindexer rpc_provider_queries_every_same_event_filter_alternative --lib"},
+        {"id": "filter-result-merge", "path": "core/src/provider.rs", "command": "cargo test -p rindexer multiple_filter_results_ --lib"}
+      ],
+      "upstream": {"status": "planned"},
+      "evidence": [
+        "characterization/v0.43/vanilla-baseline-receipt.json",
+        "characterization observation filter_mode_uses_only_first_indexed_filter=true",
+        "same-event alternatives retain manifest order while unrelated event filters are excluded",
+        "RPC queries are issued in alternative order and overlapping logs deduplicate only with complete block-hash, transaction-hash, and log-index identity",
+        "Maker address-mode split-detail wallet filter shape remains unchanged",
+        "cargo test -p rindexer --lib: 771 passed, 4 ignored",
+        "cargo clippy -p rindexer --all-targets -- -D warnings"
+      ],
+      "downstream_commits": ["e4b953cbe28399a872ffb412bb66517ec05ddfa2"],
+      "ancestry_markers": ["FIET-PATCH:outerlook-450ae49-multiple-indexed-filters"]
     },
     {
       "id": "outerlook-3003dca-live-native-transfers",
