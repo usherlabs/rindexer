@@ -1,0 +1,23 @@
+{
+  "schema_version": "fiet-rindexer-outerlook-merge-head-audit/v1",
+  "created_at": "2026-08-25T08:08:00Z",
+  "source": {
+    "repository": "https://github.com/outerlook/rindexer",
+    "branch": "fix/multi-indexed-filter"
+  },
+  "merge_commit": "e4c4b14b9a0d067da12778ff959053a01c700d88",
+  "parents": [
+    "cbb88d2eed9f33792a4be2da5bc2e78c82a398aa",
+    "986998e3d98f04fd1a4aa749e9bf9deb88ff63ce"
+  ],
+  "merge_tree": "bfd9a066a366486e32b58ab6bd62bb8625f8c994",
+  "first_parent_tree": "81c19c4fe4b8d8b6829ad13b4096adb135f7a7a1",
+  "second_parent_tree": "bfd9a066a366486e32b58ab6bd62bb8625f8c994",
+  "independent_tree_delta": false,
+  "verification": {
+    "identity_command": "git show -s --format='%H %P %T' e4c4b14b9a0d067da12778ff959053a01c700d88",
+    "parent_identity_command": "git show -s --format='%H %T' <parent>",
+    "result": "merge tree equals the 986998e second-parent tree byte-for-byte"
+  },
+  "disposition": "not-behavioral"
+}

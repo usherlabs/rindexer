@@ -25,8 +25,8 @@
       "title": "Bound native-transfer historical ranges",
       "owner": "usherlabs",
       "rationale": "Determine whether canonical v0.43 preserves explicitly bounded historical native-transfer scanning without changing Maker's live-only configuration policy.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "absorbed",
+      "release_state": "inactive",
       "source": {
         "repository": "https://github.com/outerlook/rindexer",
         "branch": "fix/multi-indexed-filter",
@@ -40,9 +40,13 @@
         "tree": "80a2698f6be13949d84d920b01c02125af598d09"
       },
       "requirement_ids": ["rindexer-indexing-integrity:native-transfer-engine-capability-and-maker-policy"],
-      "regression_tests": [{"id": "native-transfer-range-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
-      "upstream": {"status": "not_assessed"},
-      "evidence": [],
+      "regression_tests": [{"id": "native-transfer-range-audit", "path": "scripts/test_characterize_v043_baseline.py", "command": "python3 -m unittest scripts.test_characterize_v043_baseline.CharacterizeV043BaselineTests.test_stream_native_reorg_and_hypersync_baseline"}],
+      "upstream": {"status": "not_applicable"},
+      "evidence": [
+        "characterization/v0.43/vanilla-baseline-receipt.json",
+        "characterization observation native_transfer_supports_bounded_range=true",
+        "canonical native_transfer_block_fetch clamps to end_block and completes only after the bounded range"
+      ],
       "downstream_commits": [],
       "ancestry_markers": []
     },
@@ -87,16 +91,21 @@
       "title": "Run native transfers in the live pass",
       "owner": "usherlabs",
       "rationale": "Determine whether canonical v0.43 absorbs live native-transfer head following and catch-up-to-live transition behavior.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "absorbed",
+      "release_state": "inactive",
       "source": {"repository": "https://github.com/outerlook/rindexer", "branch": "fix/multi-indexed-filter", "commits": ["3003dca5e79ccb1e7bd8886d48c921f5048171a8"]},
       "affected_paths": ["core/src/indexer/native_transfer.rs", "core/src/indexer/start.rs", "core/src/manifest/core.rs", "core/src/start.rs"],
       "affected_behaviors": ["live native-transfer indexing follows authoritative head"],
       "canonical_baseline": {"tag": "v0.43.0", "commit": "4f441289b83855c357239d2729fb725a56c3060b", "tree": "80a2698f6be13949d84d920b01c02125af598d09"},
       "requirement_ids": ["rindexer-indexing-integrity:native-transfer-engine-capability-and-maker-policy"],
-      "regression_tests": [{"id": "live-native-transfer-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
-      "upstream": {"status": "not_assessed"},
-      "evidence": [],
+      "regression_tests": [{"id": "live-native-transfer-audit", "path": "core/src/manifest/core.rs", "command": "cargo test -p rindexer manifest::core::tests::has_any_live_indexing_"}],
+      "upstream": {"status": "not_applicable"},
+      "evidence": [
+        "characterization/v0.43/vanilla-baseline-receipt.json",
+        "canonical Manifest::has_any_live_indexing includes enabled native-transfer networks without end_block",
+        "canonical start_indexing_traces defers native transfers from the historical pass into the live pass",
+        "canonical native-transfer live-indexing manifest regressions pass"
+      ],
       "downstream_commits": [],
       "ancestry_markers": []
     },
@@ -159,16 +168,19 @@
       "title": "Account for the Outerlook merge head",
       "owner": "usherlabs",
       "rationale": "Prove the merge head contributes no independent behavior beyond its two audited parents before assigning a not-behavioral disposition.",
-      "audit_disposition": "pending",
-      "release_state": "pending",
+      "audit_disposition": "not-behavioral",
+      "release_state": "inactive",
       "source": {"repository": "https://github.com/outerlook/rindexer", "branch": "fix/multi-indexed-filter", "commits": ["e4c4b14b9a0d067da12778ff959053a01c700d88"]},
       "affected_paths": [],
       "affected_behaviors": ["merge ancestry only; no independent behavior unless the audit proves otherwise"],
       "canonical_baseline": {"tag": "v0.43.0", "commit": "4f441289b83855c357239d2729fb725a56c3060b", "tree": "80a2698f6be13949d84d920b01c02125af598d09"},
       "requirement_ids": ["rindexer-source-governance:complete-pre-convergence-deviation-audit"],
-      "regression_tests": [{"id": "merge-head-inventory-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts/test_downstream_governance.py"}],
+      "regression_tests": [{"id": "merge-head-inventory-audit", "path": "scripts/test_downstream_governance.py", "command": "python3 -m unittest scripts.test_downstream_governance.DownstreamGovernanceTests.test_outerlook_merge_head_has_no_independent_tree_delta"}],
       "upstream": {"status": "not_applicable"},
-      "evidence": [],
+      "evidence": [
+        "characterization/v0.43/outerlook-merge-head-audit.json",
+        "merge tree bfd9a066a366486e32b58ab6bd62bb8625f8c994 equals second-parent 986998e tree byte-for-byte"
+      ],
       "downstream_commits": [],
       "ancestry_markers": []
     },

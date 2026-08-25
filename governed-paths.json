@@ -39,6 +39,7 @@
     "scripts/validate_downstream_governance.py",
     "scripts/verify_canonical_contribution.py",
     "characterization/v0.43/README.md",
+    "characterization/v0.43/outerlook-merge-head-audit.json",
     "characterization/v0.43/public-api-probe/Cargo.toml",
     "characterization/v0.43/public-api-probe/Cargo.lock",
     "characterization/v0.43/public-api-probe/tests/legacy_callback.rs",
