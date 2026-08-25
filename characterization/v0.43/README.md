@@ -36,3 +36,15 @@ must own idempotent normative persistence until it opts into an atomic cursor AP
 Its `remaining_before_immutable_characterization_receipt` list is normative for
 the characterization campaign and prevents a partial green result from being
 mistaken for the sealed baseline receipt.
+
+After every required run passes, seal and independently verify the retained
+evidence with:
+
+```bash
+python3 scripts/seal_v043_characterization.py
+python3 scripts/seal_v043_characterization.py --verify
+```
+
+The resulting `vanilla-baseline-receipt.json` binds the exact canonical source,
+toolchain, qualification runs, and SHA-256 of every subordinate artifact. It is
+an immutable characterization gate only; `release_authorized` is always false.

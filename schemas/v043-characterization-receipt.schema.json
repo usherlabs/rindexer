@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/usherlabs/rindexer/blob/fiet/v0.43/schemas/v043-characterization-receipt.schema.json",
+  "title": "FIET canonical rindexer v0.43 characterization receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "sealed_at",
+    "canonical_source",
+    "toolchain",
+    "qualification_runs",
+    "artifacts",
+    "verdict",
+    "release_authorized"
+  ],
+  "properties": {
+    "$schema": {"const": "../../../schemas/v043-characterization-receipt.schema.json"},
+    "schema_version": {"const": "fiet-rindexer-v043-characterization-receipt/v1"},
+    "sealed_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "canonical_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "commit", "tree", "runtime_paths", "runtime_paths_byte_identical"],
+      "properties": {
+        "repository": {"const": "https://github.com/joshstevens19/rindexer"},
+        "tag": {"const": "v0.43.0"},
+        "commit": {"const": "4f441289b83855c357239d2729fb725a56c3060b"},
+        "tree": {"const": "80a2698f6be13949d84d920b01c02125af598d09"},
+        "runtime_paths": {
+          "const": ["Cargo.toml", "Cargo.lock", "core/Cargo.toml", "core/src"]
+        },
+        "runtime_paths_byte_identical": {"const": true}
+      }
+    },
+    "toolchain": {"type": "object", "minProperties": 1},
+    "qualification_runs": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["kind", "result"],
+        "properties": {
+          "kind": {"type": "string", "minLength": 1},
+          "result": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_receipt", "process_receipt", "failure_injection_receipt", "test_results"],
+      "properties": {
+        "source_receipt": {"$ref": "#/$defs/artifact"},
+        "process_receipt": {"$ref": "#/$defs/artifact"},
+        "failure_injection_receipt": {"$ref": "#/$defs/artifact"},
+        "test_results": {"$ref": "#/$defs/artifact"}
+      }
+    },
+    "verdict": {"const": "characterized"},
+    "release_authorized": {"const": false}
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

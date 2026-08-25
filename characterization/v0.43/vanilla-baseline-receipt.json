@@ -1,18 +1,19 @@
 {
-  "schema_version": "fiet-rindexer-vanilla-test-results/v1",
-  "created_at": "2026-08-25T08:00:30Z",
-  "source_under_test": {
-    "canonical_commit": "4f441289b83855c357239d2729fb725a56c3060b",
-    "canonical_root_tree": "80a2698f6be13949d84d920b01c02125af598d09",
-    "runtime_paths_byte_identical_to_canonical": true,
+  "$schema": "../../../schemas/v043-characterization-receipt.schema.json",
+  "schema_version": "fiet-rindexer-v043-characterization-receipt/v1",
+  "sealed_at": "2026-08-25T08:00:30Z",
+  "canonical_source": {
+    "repository": "https://github.com/joshstevens19/rindexer",
+    "tag": "v0.43.0",
+    "commit": "4f441289b83855c357239d2729fb725a56c3060b",
+    "tree": "80a2698f6be13949d84d920b01c02125af598d09",
     "runtime_paths": [
       "Cargo.toml",
       "Cargo.lock",
       "core/Cargo.toml",
       "core/src"
     ],
-    "source_receipt": "characterization/v0.43/vanilla-baseline-source-receipt.json",
-    "source_receipt_sha256": "fca0180041950b2db68fcf629c71b756c4cf1ad5adcf124b0489182812461c82"
+    "runtime_paths_byte_identical": true
   },
   "toolchain": {
     "target": "x86_64-unknown-linux-gnu",
@@ -20,7 +21,7 @@
     "cargo": "cargo 1.97.0 (c980f4866 2026-06-30)",
     "cargo_nextest": "cargo-nextest 0.9.143 (60fa45f63 2026-08-04)"
   },
-  "runs": [
+  "qualification_runs": [
     {
       "kind": "source_characterization",
       "command": "python3 -m unittest scripts/test_characterize_v043_baseline.py",
@@ -132,6 +133,24 @@
       "suite_result": "1 passed, 1 total"
     }
   ],
-  "remaining_before_immutable_characterization_receipt": [],
-  "verdict": "pass"
+  "artifacts": {
+    "source_receipt": {
+      "path": "characterization/v0.43/vanilla-baseline-source-receipt.json",
+      "sha256": "fca0180041950b2db68fcf629c71b756c4cf1ad5adcf124b0489182812461c82"
+    },
+    "process_receipt": {
+      "path": "characterization/v0.43/vanilla-baseline-process-receipt.json",
+      "sha256": "c6e9909fb061d80fa50c26dcfc183e75d6074f15dc31a677e01e806aff7c8027"
+    },
+    "failure_injection_receipt": {
+      "path": "characterization/v0.43/vanilla-baseline-failure-injection-receipt.json",
+      "sha256": "3b28576ea9fa583b931972472ae5070abc828077a492bb9ff8d75813507c6158"
+    },
+    "test_results": {
+      "path": "characterization/v0.43/vanilla-baseline-test-results.json",
+      "sha256": "b904065d0267437e6e136f2acb78cf940ae819eef63b648c62394c6774439fb4"
+    }
+  },
+  "verdict": "characterized",
+  "release_authorized": false
 }
