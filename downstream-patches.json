@@ -171,6 +171,62 @@
       "evidence": [],
       "downstream_commits": [],
       "ancestry_markers": []
+    },
+    {
+      "id": "fiet-maker-controlled-embedded-lifecycle",
+      "title": "Return embedded lifecycle control to Maker",
+      "owner": "usherlabs",
+      "rationale": "Preserve Maker supervision by suppressing rindexer-owned health, signal, and process-exit behavior while returning terminal engine results to the caller.",
+      "audit_disposition": "ported",
+      "release_state": "active",
+      "source": {
+        "repository": "https://github.com/usherlabs/fiet-maker",
+        "branch": "docs/phase-1-schema-specification-vocabulary",
+        "commits": ["bba8af53009a665323974b0bb39840297073eadc"]
+      },
+      "affected_paths": [
+        "core/src/lib.rs",
+        "core/src/start.rs",
+        "core/examples/embedded_lifecycle_probe.rs"
+      ],
+      "affected_behaviors": [
+        "watch and GraphQL rejection in embedded mode",
+        "suppressed embedded health listener and engine process signal handlers",
+        "caller-owned drain deadline and final exit status",
+        "terminal engine result propagation"
+      ],
+      "canonical_baseline": {
+        "tag": "v0.43.0",
+        "commit": "4f441289b83855c357239d2729fb725a56c3060b",
+        "tree": "80a2698f6be13949d84d920b01c02125af598d09"
+      },
+      "requirement_ids": [
+        "rindexer-indexing-integrity:maker-controlled-embedded-lifecycle"
+      ],
+      "regression_tests": [
+        {
+          "id": "embedded-lifecycle-policy",
+          "path": "core/src/start.rs",
+          "command": "cargo nextest run -p rindexer lifecycle_tests"
+        },
+        {
+          "id": "embedded-lifecycle-qualification-unit",
+          "path": "scripts/test_qualify_embedded_lifecycle.py",
+          "command": "python3 -m unittest scripts/test_qualify_embedded_lifecycle.py"
+        },
+        {
+          "id": "embedded-lifecycle-process",
+          "path": "core/examples/embedded_lifecycle_probe.rs",
+          "command": "python3 scripts/qualify_embedded_lifecycle.py --binary target/debug/examples/embedded_lifecycle_probe --anvil $(command -v anvil) --output qualification/v0.43/embedded-lifecycle-receipt.json"
+        }
+      ],
+      "upstream": {"status": "planned"},
+      "evidence": [
+        "qualification/v0.43/embedded-lifecycle-receipt.json",
+        "scripts/test_qualify_embedded_lifecycle.py"
+      ],
+      "downstream_commits": ["763182eb0e7994872c9ae3fdf8ebbdbf0629eb08"],
+      "ancestry_markers": ["FIET-PATCH:maker-controlled-embedded-lifecycle"]
     }
   ]
 }
