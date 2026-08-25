@@ -62,11 +62,17 @@ def _git(root: Path, *args: str, check: bool = True) -> str:
 
 
 def _read(root: Path, relative: str) -> str:
-    return (root / relative).read_text(encoding="utf-8")
+    return _git(root, "show", f"{CANONICAL_COMMIT}:{relative}")
 
 
 def _sha256(root: Path, relative: str) -> str:
-    return hashlib.sha256((root / relative).read_bytes()).hexdigest()
+    result = subprocess.run(
+        ["git", "show", f"{CANONICAL_COMMIT}:{relative}"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    return hashlib.sha256(result.stdout).hexdigest()
 
 
 def _contains_all(source: str, *needles: str) -> bool:
