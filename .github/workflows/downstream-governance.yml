@@ -27,6 +27,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Prepare immutable v0.43 characterization worktree
+        run: >-
+          git worktree add --detach
+          "$RUNNER_TEMP/rindexer-v043-characterization"
+          de028ae38e1246b74e48e914cb2f34f17af56d64
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -59,45 +65,56 @@ jobs:
           scripts/test_downstream_governance.py
           scripts/test_canonical_drift.py
           scripts/test_canonical_contribution.py
-          scripts/test_characterize_v043_baseline.py
           scripts/test_seal_v043_characterization.py
           scripts/test_seal_v043_fork_qualification.py
 
+      - name: Run untouched v0.43 characterization regressions
+        run: |
+          cd "$RUNNER_TEMP/rindexer-v043-characterization"
+          python3 -m unittest \
+            scripts/test_characterize_v043_baseline.py \
+            scripts/test_characterize_v043_process.py
+
       - name: Characterize untouched v0.43 source behavior
-        run: >-
-          python3 scripts/characterize_v043_baseline.py
-          --output characterization/v0.43/vanilla-baseline-source-receipt.generated.json
+        run: |
+          cd "$RUNNER_TEMP/rindexer-v043-characterization"
+          python3 scripts/characterize_v043_baseline.py \
+            --output "$GITHUB_WORKSPACE/characterization/v0.43/vanilla-baseline-source-receipt.generated.json"
 
       - name: Run untouched v0.43 public API probes
-        run: >-
-          cargo test
-          --locked
-          --manifest-path characterization/v0.43/public-api-probe/Cargo.toml
-          --test vanilla
+        run: |
+          cd "$RUNNER_TEMP/rindexer-v043-characterization"
+          cargo test \
+            --locked \
+            --manifest-path characterization/v0.43/public-api-probe/Cargo.toml \
+            --test vanilla
 
       - name: Run untouched v0.43 callback crash-window probe
-        run: >-
-          cargo test
-          --locked
-          --manifest-path characterization/v0.43/public-api-probe/Cargo.toml
-          --test legacy_callback
+        run: |
+          cd "$RUNNER_TEMP/rindexer-v043-characterization"
+          cargo test \
+            --locked \
+            --manifest-path characterization/v0.43/public-api-probe/Cargo.toml \
+            --test legacy_callback
 
       - name: Install Foundry for process characterization
         uses: foundry-rs/foundry-toolchain@v1
 
       - name: Build untouched v0.43 process probe binary
         run: |
+          cd "$RUNNER_TEMP/rindexer-v043-characterization"
           cargo build -p rindexer_cli
           git diff --exit-code -- . ':(exclude)Cargo.lock'
           git restore --source=HEAD -- Cargo.lock
           git diff --exit-code -- Cargo.lock
 
       - name: Run untouched v0.43 process lifecycle probes
-        run: >-
-          python3 scripts/characterize_v043_process.py
-          --binary target/debug/rindexer_cli
-          --anvil "$(command -v anvil)"
-          --output characterization/v0.43/vanilla-baseline-process-receipt.generated.json
+        run: |
+          cd "$RUNNER_TEMP/rindexer-v043-characterization"
+          python3 scripts/characterize_v043_process.py \
+            --binary target/debug/rindexer_cli \
+            --anvil "$(command -v anvil)" \
+            --output "$GITHUB_WORKSPACE/characterization/v0.43/vanilla-baseline-process-receipt.generated.json"
 
       - name: Verify sealed characterization evidence
         if: ${{ hashFiles('characterization/v0.43/vanilla-baseline-receipt.json') != '' }}
