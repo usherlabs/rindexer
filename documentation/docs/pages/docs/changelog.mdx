@@ -7,6 +7,7 @@
 -------------------------------------------------
 - fix: return a terminal result when the native-transfer processor channel closes instead of leaving the indexing task waiting indefinitely.
 - fix: normalize partial and single-block live retry ranges so retries cannot reverse endpoints or skip the first unacknowledged block.
+- fix: report unexpected live event-stream EOF as a terminal indexing error while preserving successful caller-requested cancellation.
 
 ### Features
 -------------------------------------------------
