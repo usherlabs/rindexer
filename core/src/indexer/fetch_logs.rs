@@ -1080,6 +1080,54 @@ async fn fetch_logs_once<P: ChainProvider + ?Sized>(
     (None, None, None)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LiveFetchRetryHint {
+    from_block: U64,
+    to_block: U64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LiveFetchPlan {
+    from_block: U64,
+    to_block: U64,
+}
+
+#[derive(Debug, Default)]
+struct LiveFetchState {
+    retry_hint: Option<LiveFetchRetryHint>,
+}
+
+impl LiveFetchState {
+    fn plan(
+        &self,
+        next_from: U64,
+        safe_head: U64,
+        max_block_range: Option<U64>,
+    ) -> Option<LiveFetchPlan> {
+        if next_from > safe_head {
+            return None;
+        }
+
+        let normal_to = max_block_range
+            .map(|limit| next_from.saturating_add(limit).min(safe_head))
+            .unwrap_or(safe_head);
+        let to_block = self
+            .retry_hint
+            .map(|hint| hint.to_block.clamp(next_from, normal_to))
+            .unwrap_or(normal_to);
+
+        Some(LiveFetchPlan { from_block: next_from, to_block })
+    }
+
+    fn retry_with(&mut self, from_block: U64, to_block: U64) {
+        self.retry_hint = Some(LiveFetchRetryHint { from_block, to_block });
+    }
+
+    fn delivered(&mut self) {
+        self.retry_hint = None;
+    }
+}
+
 /// Handles live indexing mode, continuously checking for new blocks, ensuring they are
 /// within a safe range, updating the filter, and sending the logs to the provided channel.
 #[allow(clippy::too_many_arguments)]
@@ -1104,7 +1152,7 @@ async fn live_indexing_stream(
     trace_registry: Option<&TraceCallbackRegistry>,
 ) {
     let mut last_seen_block_number = last_seen_block_number;
-    let mut log_response_to_large_to_block: Option<U64> = None;
+    let mut fetch_state = LiveFetchState::default();
     let mut heartbeat = HeartbeatTracker::new(Duration::from_secs(300));
     let target_iteration_duration = Duration::from_millis(200);
 
@@ -1197,6 +1245,7 @@ async fn live_indexing_stream(
 
             current_filter = current_filter.set_from_block(U64::from(fork_block));
             last_seen_block_number = U64::from(fork_block.saturating_sub(1));
+            fetch_state.delivered();
             continue;
         }
 
@@ -1271,6 +1320,7 @@ async fn live_indexing_stream(
                                 current_filter =
                                     current_filter.set_from_block(U64::from(fork_point));
                                 last_seen_block_number = U64::from(fork_point.saturating_sub(1));
+                                fetch_state.delivered();
                                 continue;
                             }
                             Ok(None) => {}
@@ -1285,8 +1335,7 @@ async fn live_indexing_stream(
                         }
                     }
 
-                    let latest_block_number = log_response_to_large_to_block
-                        .unwrap_or(U64::from(latest_block.header.number));
+                    let latest_block_number = U64::from(latest_block.header.number);
 
                     if last_seen_block_number == latest_block_number {
                         debug!(
@@ -1305,10 +1354,10 @@ async fn live_indexing_stream(
 
                         let safe_block_number =
                             latest_block_number.saturating_sub(*reorg_safe_distance);
-                        let from_block = current_filter.from_block();
-                        if from_block > safe_block_number {
+                        let next_from = current_filter.from_block();
+                        if next_from > safe_block_number {
                             if reorg_safe_distance.is_zero() {
-                                let block_distance = from_block - latest_block_number;
+                                let block_distance = next_from - latest_block_number;
                                 let is_outside_reorg_range = block_distance
                                     > reorg_safe_distance_for_chain(cached_provider.chain().id());
 
@@ -1320,7 +1369,7 @@ async fn live_indexing_stream(
                                         info_log_name,
                                         IndexingEventProgressStatus::live_log(),
                                         latest_block_number,
-                                        from_block
+                                        next_from
                                     );
                                 } else {
                                     info!(
@@ -1328,7 +1377,7 @@ async fn live_indexing_stream(
                                         info_log_name,
                                         IndexingEventProgressStatus::live_log(),
                                         latest_block_number,
-                                        from_block
+                                        next_from
                                     );
                                 }
                             } else {
@@ -1336,18 +1385,36 @@ async fn live_indexing_stream(
                                     "{} - {} - LIVE INDEXING STREAM - not in safe reorg block range yet block: {} > range: {}",
                                     info_log_name,
                                     IndexingEventProgressStatus::live_log(),
-                                    from_block,
+                                    next_from,
                                     safe_block_number
                                 );
                             }
                         } else {
-                            let contract_address = current_filter.contract_addresses().await;
+                            let plan = fetch_state
+                                .plan(next_from, safe_block_number, original_max_limit)
+                                .expect("next block at or below safe head must produce a plan");
+                            let from_block = plan.from_block;
+                            let to_block = plan.to_block;
 
-                            let to_block = if let Some(max_block_range) = original_max_limit {
-                                (from_block + max_block_range).min(safe_block_number)
-                            } else {
-                                safe_block_number
-                            };
+                            if let Some(retry_hint) = fetch_state.retry_hint {
+                                if retry_hint.from_block != from_block
+                                    || retry_hint.to_block != to_block
+                                {
+                                    warn!(
+                                        "{} - {} - Normalized live retry hint {} - {} against next unprocessed block {} and safe head {}; fetching {} - {}",
+                                        info_log_name,
+                                        IndexingEventProgressStatus::live_log(),
+                                        retry_hint.from_block,
+                                        retry_hint.to_block,
+                                        next_from,
+                                        safe_block_number,
+                                        from_block,
+                                        to_block,
+                                    );
+                                }
+                            }
+
+                            let contract_address = current_filter.contract_addresses().await;
                             // The bloom-filter shortcut only applies when the
                             // single block we're about to fetch IS `latest_block`.
                             // With `reorg_safe_distance > 0` the processed block
@@ -1391,6 +1458,7 @@ async fn live_indexing_stream(
                                     );
                                     break;
                                 }
+                                fetch_state.delivered();
                                 current_filter =
                                     current_filter.set_from_block(to_block + U64::from(1));
                                 last_seen_block_number = to_block;
@@ -1511,6 +1579,7 @@ async fn live_indexing_stream(
                                                 .set_from_block(U64::from(min_removed_block));
                                             last_seen_block_number =
                                                 U64::from(min_removed_block.saturating_sub(1));
+                                            fetch_state.delivered();
                                             // Drain any pending reth signals to avoid double recovery
                                             while reth_reorg_rx.try_recv().is_ok() {}
                                             continue;
@@ -1577,8 +1646,7 @@ async fn live_indexing_stream(
                                             break;
                                         }
 
-                                        // Clear any remaining references to reduce memory pressure
-                                        log_response_to_large_to_block = None;
+                                        fetch_state.delivered();
 
                                         if logs_empty {
                                             current_filter = current_filter
@@ -1622,7 +1690,8 @@ async fn live_indexing_stream(
                                                     retry_result.to
                                                     );
 
-                                            log_response_to_large_to_block = Some(retry_result.to);
+                                            fetch_state
+                                                .retry_with(retry_result.from, retry_result.to);
                                         } else {
                                             let halved_to_block =
                                                 halved_block_number(to_block, from_block);
@@ -1638,7 +1707,7 @@ async fn live_indexing_stream(
                                                     err
                                                 );
 
-                                            log_response_to_large_to_block = Some(halved_to_block);
+                                            fetch_state.retry_with(from_block, halved_to_block);
                                         }
                                     }
                                 }
@@ -2518,6 +2587,104 @@ mod tests {
         let result =
             retry_with_block_range("test", &error, U64::from(100), U64::from(100), None).await;
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn live_retry_plan_is_never_reversed_or_outside_safe_limits() {
+        struct Case {
+            next_from: u64,
+            safe_head: u64,
+            max_range: Option<u64>,
+            retry_hint: Option<(u64, u64)>,
+            expected: Option<(u64, u64)>,
+        }
+
+        let cases = [
+            Case {
+                next_from: 100,
+                safe_head: 200,
+                max_range: None,
+                retry_hint: None,
+                expected: Some((100, 200)),
+            },
+            Case {
+                next_from: 100,
+                safe_head: 200,
+                max_range: Some(25),
+                retry_hint: None,
+                expected: Some((100, 125)),
+            },
+            Case {
+                next_from: 100,
+                safe_head: 200,
+                max_range: None,
+                retry_hint: Some((100, 80)),
+                expected: Some((100, 100)),
+            },
+            Case {
+                next_from: 100,
+                safe_head: 200,
+                max_range: Some(25),
+                retry_hint: Some((150, 250)),
+                expected: Some((100, 125)),
+            },
+            Case {
+                next_from: 201,
+                safe_head: 200,
+                max_range: None,
+                retry_hint: Some((201, 250)),
+                expected: None,
+            },
+        ];
+
+        for case in cases {
+            let mut state = LiveFetchState::default();
+            if let Some((from_block, to_block)) = case.retry_hint {
+                state.retry_with(U64::from(from_block), U64::from(to_block));
+            }
+            let actual = state.plan(
+                U64::from(case.next_from),
+                U64::from(case.safe_head),
+                case.max_range.map(U64::from),
+            );
+            assert_eq!(
+                actual.map(|plan| (plan.from_block.to::<u64>(), plan.to_block.to::<u64>())),
+                case.expected,
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn live_retry_provider_hint_cannot_skip_the_next_unprocessed_block() {
+        let error =
+            ProviderError::CustomError("this block range should work: [0xc8, 0xfa]".to_string());
+        let retry = retry_with_block_range("test", &error, U64::from(100), U64::from(300), None)
+            .await
+            .expect("provider retry hint should parse");
+        assert_eq!(retry.from, U64::from(200));
+
+        let mut state = LiveFetchState::default();
+        state.retry_with(retry.from, retry.to);
+        assert_eq!(
+            state.plan(U64::from(100), U64::from(300), None),
+            Some(LiveFetchPlan { from_block: U64::from(100), to_block: U64::from(250) }),
+        );
+    }
+
+    #[test]
+    fn successful_live_retry_clears_the_constraint_without_a_gap() {
+        let mut state = LiveFetchState::default();
+        state.retry_with(U64::from(100), U64::from(110));
+        assert_eq!(
+            state.plan(U64::from(100), U64::from(200), None),
+            Some(LiveFetchPlan { from_block: U64::from(100), to_block: U64::from(110) }),
+        );
+
+        state.delivered();
+        assert_eq!(
+            state.plan(U64::from(111), U64::from(200), None),
+            Some(LiveFetchPlan { from_block: U64::from(111), to_block: U64::from(200) }),
+        );
     }
 
     // --- classify_fetch_error tests ---
