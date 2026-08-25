@@ -411,6 +411,7 @@ fn no_code_callback(params: Arc<NoCodeCallbackParams>) -> EventCallbacks {
                         first.found_in_request.from_block,
                         first.found_in_request.to_block,
                         first.tx_information.network.clone(),
+                        first.found_in_request.detail_key.clone(),
                     ))
                 }
                 CallbackResult::Trace(event) => event.iter().find_map(|result| match result {
@@ -418,12 +419,13 @@ fn no_code_callback(params: Arc<NoCodeCallbackParams>) -> EventCallbacks {
                         found_in_request.from_block,
                         found_in_request.to_block,
                         tx_information.network.clone(),
+                        crate::event::config::LEGACY_DETAIL_KEY.to_string(),
                     )),
                     TraceResult::Block { .. } => None,
                 }),
             };
 
-            let (from_block, to_block, network) = match batch_meta {
+            let (from_block, to_block, network, detail_key) = match batch_meta {
                 Some(meta) => meta,
                 None => {
                     debug!(
@@ -756,6 +758,7 @@ fn no_code_callback(params: Arc<NoCodeCallbackParams>) -> EventCallbacks {
                                     &params.event_info.name,
                                 ),
                                 network: network.clone(),
+                                detail_key: detail_key.clone(),
                                 to_block: to_block.to(),
                             };
                             if let Err(e) = postgres
@@ -832,6 +835,7 @@ fn no_code_callback(params: Arc<NoCodeCallbackParams>) -> EventCallbacks {
                         params.indexer_name.clone(),
                         params.contract_name.clone(),
                         params.event_info.name.clone(),
+                        detail_key.clone(),
                         params.postgres.clone(),
                     );
                     if let Err(e) = process_table_operations(

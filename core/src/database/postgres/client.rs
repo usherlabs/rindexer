@@ -109,7 +109,25 @@ pub enum BulkInsertPostgresError {
 pub struct BulkCursorUpdate {
     pub internal_table_name: String,
     pub network: String,
+    pub detail_key: String,
     pub to_block: u64,
+}
+
+fn validate_exact_cursor_identity(
+    requested_detail_key: &str,
+    existing_detail_keys: &[String],
+) -> Result<(), PostgresError> {
+    const LEGACY_DETAIL_KEY: &str = "__event__";
+    let has_legacy = existing_detail_keys.iter().any(|key| key == LEGACY_DETAIL_KEY);
+    let has_exact = existing_detail_keys.iter().any(|key| key != LEGACY_DETAIL_KEY);
+    let conflicts = if requested_detail_key == LEGACY_DETAIL_KEY { has_exact } else { has_legacy };
+
+    if conflicts {
+        return Err(PostgresError::Custom(format!(
+            "exact cursor identity conflict: requested detail_key={requested_detail_key}, existing detail keys={existing_detail_keys:?}; __event__ may not coexist with filter-specific rows"
+        )));
+    }
+    Ok(())
 }
 
 pub struct PostgresClient {
@@ -117,6 +135,76 @@ pub struct PostgresClient {
 }
 
 impl PostgresClient {
+    /// Validate the exact/legacy identity invariant and seed a missing cursor
+    /// at zero. Existing network-wide progress is never copied to a detail.
+    pub async fn ensure_detail_cursor(
+        &self,
+        internal_table_name: &str,
+        network: &str,
+        detail_key: &str,
+    ) -> Result<(), PostgresError> {
+        let mut conn = self.pool.get().await?;
+        let transaction = conn.transaction().await.map_err(PostgresError::PgError)?;
+        // An empty result has no row to lock. Serialize first-seed decisions so
+        // concurrent legacy and exact startup tasks cannot both observe an
+        // empty network and create an ambiguous cursor map.
+        let lock = format!(
+            "LOCK TABLE rindexer_internal.{internal_table_name} IN SHARE ROW EXCLUSIVE MODE"
+        );
+        transaction.batch_execute(&lock).await.map_err(PostgresError::PgError)?;
+        let select = format!(
+            "SELECT detail_key FROM rindexer_internal.{internal_table_name} WHERE network = $1 FOR UPDATE"
+        );
+        let rows = transaction.query(&select, &[&network]).await.map_err(PostgresError::PgError)?;
+        let existing = rows.iter().map(|row| row.get::<_, String>(0)).collect::<Vec<_>>();
+        validate_exact_cursor_identity(detail_key, &existing)?;
+
+        let insert = format!(
+            "INSERT INTO rindexer_internal.{internal_table_name} (network, detail_key, last_synced_block) VALUES ($1, $2, 0) ON CONFLICT (network, detail_key) DO NOTHING"
+        );
+        transaction
+            .execute(&insert, &[&network, &detail_key])
+            .await
+            .map_err(PostgresError::PgError)?;
+        transaction.commit().await.map_err(PostgresError::PgError)
+    }
+
+    /// Advance one exact cursor monotonically. A missing seed is a hard
+    /// failure instead of silently creating unqualified coverage.
+    pub async fn advance_detail_cursor(
+        &self,
+        internal_table_name: &str,
+        network: &str,
+        detail_key: &str,
+        to_block: u64,
+    ) -> Result<(), PostgresError> {
+        let mut conn = self.pool.get().await?;
+        let transaction = conn.transaction().await.map_err(PostgresError::PgError)?;
+        let update = format!(
+            "UPDATE rindexer_internal.{internal_table_name} SET last_synced_block = $1 WHERE network = $2 AND detail_key = $3 AND $1 > last_synced_block"
+        );
+        let updated = transaction
+            .execute(&update, &[&EthereumSqlTypeWrapper::U64(to_block), &network, &detail_key])
+            .await
+            .map_err(PostgresError::PgError)?;
+        if updated == 0 {
+            let probe = format!(
+                "SELECT 1 FROM rindexer_internal.{internal_table_name} WHERE network = $1 AND detail_key = $2"
+            );
+            if transaction
+                .query_opt(&probe, &[&network, &detail_key])
+                .await
+                .map_err(PostgresError::PgError)?
+                .is_none()
+            {
+                return Err(PostgresError::Custom(format!(
+                    "missing exact cursor seed for rindexer_internal.{internal_table_name} ({network}, {detail_key})"
+                )));
+            }
+        }
+        transaction.commit().await.map_err(PostgresError::PgError)
+    }
+
     pub async fn new() -> Result<Self, PostgresConnectionError> {
         async fn _new(disable_ssl: bool) -> Result<PostgresClient, PostgresConnectionError> {
             let connection_str = connection_string()?;
@@ -561,13 +649,17 @@ impl PostgresClient {
         // Same statement + binding shape as update_progress_and_last_synced_task,
         // monotonic guard included — but inside the batch's transaction.
         let cursor_query = format!(
-            "UPDATE rindexer_internal.{} SET last_synced_block = $1 WHERE network = $2 AND $1 > last_synced_block",
+            "UPDATE rindexer_internal.{} SET last_synced_block = $1 WHERE network = $2 AND detail_key = $3 AND $1 > last_synced_block",
             cursor.internal_table_name
         );
         let cursor_rows = transaction
             .execute(
                 &cursor_query,
-                &[&EthereumSqlTypeWrapper::U64(cursor.to_block), &cursor.network],
+                &[
+                    &EthereumSqlTypeWrapper::U64(cursor.to_block),
+                    &cursor.network,
+                    &cursor.detail_key,
+                ],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -586,11 +678,11 @@ impl PostgresClient {
             //    restart indexing from the manifest start forever (duplicate
             //    storm) — roll back and fail loudly instead.
             let probe = format!(
-                "SELECT last_synced_block::TEXT FROM rindexer_internal.{} WHERE network = $1",
+                "SELECT last_synced_block::TEXT FROM rindexer_internal.{} WHERE network = $1 AND detail_key = $2",
                 cursor.internal_table_name
             );
             let row = transaction
-                .query_opt(&probe, &[&cursor.network])
+                .query_opt(&probe, &[&cursor.network, &cursor.detail_key])
                 .await
                 .map_err(|e| e.to_string())?;
             match row {
@@ -598,10 +690,11 @@ impl PostgresClient {
                     let current: String = row.get(0);
                     transaction.commit().await.map_err(|e| e.to_string())?;
                     tracing::debug!(
-                        "ATOMIC-CURSOR commit: {} rows={} cursor[{}] to_block={} not advanced (already at {} — concurrent live/historic loop ahead)",
+                        "ATOMIC-CURSOR commit: {} rows={} cursor[{}:{}] to_block={} not advanced (already at {} — concurrent live/historic loop ahead)",
                         table_name,
                         postgres_bulk_data.len(),
                         cursor.internal_table_name,
+                        cursor.detail_key,
                         cursor.to_block,
                         current
                     );
@@ -609,10 +702,11 @@ impl PostgresClient {
                 None => {
                     // dropping the transaction without commit rolls it back
                     return Err(format!(
-                        "ATOMIC-CURSOR: no cursor row for network={} in rindexer_internal.{} — \
+                        "ATOMIC-CURSOR: no cursor row for network={} detail_key={} in rindexer_internal.{} — \
                          seeded row missing, rolling back {} rows for {} (cursor could never \
                          advance; committing would re-index from the manifest start forever)",
                         cursor.network,
+                        cursor.detail_key,
                         cursor.internal_table_name,
                         postgres_bulk_data.len(),
                         table_name
@@ -622,10 +716,11 @@ impl PostgresClient {
         } else {
             transaction.commit().await.map_err(|e| e.to_string())?;
             tracing::debug!(
-                "ATOMIC-CURSOR commit: {} rows={} cursor[{}]={} (updated={})",
+                "ATOMIC-CURSOR commit: {} rows={} cursor[{}:{}]={} (updated={})",
                 table_name,
                 postgres_bulk_data.len(),
                 cursor.internal_table_name,
+                cursor.detail_key,
                 cursor.to_block,
                 cursor_rows
             );
@@ -742,5 +837,33 @@ impl PostgresClient {
         transaction.commit().await?;
 
         Ok((total_deleted, all_affected_tx_hashes))
+    }
+}
+
+#[cfg(test)]
+mod exact_cursor_tests {
+    use super::{validate_exact_cursor_identity, PostgresError};
+
+    #[test]
+    fn legacy_and_filter_specific_cursor_rows_never_coexist() {
+        let legacy = vec!["__event__".to_string()];
+        let exact = vec!["token:i1:wallet".to_string()];
+
+        assert!(matches!(
+            validate_exact_cursor_identity("token:i1:wallet", &legacy),
+            Err(PostgresError::Custom(_))
+        ));
+        assert!(matches!(
+            validate_exact_cursor_identity("__event__", &exact),
+            Err(PostgresError::Custom(_))
+        ));
+    }
+
+    #[test]
+    fn sibling_exact_cursor_rows_are_allowed_without_aggregation() {
+        let exact = vec!["token:i1:wallet".to_string(), "token:i2:wallet".to_string()];
+
+        assert!(validate_exact_cursor_identity("token:i1:wallet", &exact).is_ok());
+        assert!(validate_exact_cursor_identity("token:i3:wallet", &exact).is_ok());
     }
 }

@@ -92,14 +92,47 @@ fn generate_internal_event_table_sql(
         let table_name = generate_internal_event_table_name(schema_name, &event_info.name);
 
         let create_table_query = format!(
-            r#"CREATE TABLE IF NOT EXISTS rindexer_internal.{table_name} ("network" TEXT PRIMARY KEY, "last_synced_block" NUMERIC);"#
-        );
+            r#"
+            CREATE TABLE IF NOT EXISTS rindexer_internal.{table_name} (
+                "network" TEXT NOT NULL,
+                "detail_key" TEXT NOT NULL DEFAULT '__event__',
+                "last_synced_block" NUMERIC,
+                PRIMARY KEY ("network", "detail_key")
+            );
+            ALTER TABLE rindexer_internal.{table_name}
+                ADD COLUMN IF NOT EXISTS "detail_key" TEXT NOT NULL DEFAULT '__event__';
+            DO $detail_cursor_migration$
+            DECLARE
+                current_primary_key RECORD;
+            BEGIN
+                SELECT conname, pg_get_constraintdef(oid) AS definition
+                  INTO current_primary_key
+                  FROM pg_constraint
+                 WHERE conrelid = 'rindexer_internal.{table_name}'::regclass
+                   AND contype = 'p';
 
-        let insert_queries = networks.iter().map(|network| {
-            format!(
-                r#"INSERT INTO rindexer_internal.{table_name} ("network", "last_synced_block") VALUES ('{network}', 0) ON CONFLICT ("network") DO NOTHING;"#,
-            )
-        }).collect::<Vec<_>>().join("\n");
+                IF current_primary_key.conname IS NOT NULL
+                   AND replace(current_primary_key.definition, '"', '')
+                       <> 'PRIMARY KEY (network, detail_key)'
+                THEN
+                    EXECUTE format(
+                        'ALTER TABLE rindexer_internal.{table_name} DROP CONSTRAINT %I',
+                        current_primary_key.conname
+                    );
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                     WHERE conrelid = 'rindexer_internal.{table_name}'::regclass
+                       AND contype = 'p'
+                ) THEN
+                    ALTER TABLE rindexer_internal.{table_name}
+                        ADD PRIMARY KEY ("network", "detail_key");
+                END IF;
+            END
+            $detail_cursor_migration$;
+            "#
+        );
 
         let create_latest_block_query = r#"CREATE TABLE IF NOT EXISTS rindexer_internal.latest_block ("network" TEXT PRIMARY KEY, "block" NUMERIC);"#.to_string();
 
@@ -109,7 +142,10 @@ fn generate_internal_event_table_sql(
             )
         }).collect::<Vec<_>>().join("\n");
 
-        format!("{create_table_query}\n{insert_queries}\n{create_latest_block_query}\n{latest_block_insert_queries}")
+        // Exact cursor rows are seeded by runtime setup after the manifest
+        // detail key is known. DDL must never fan a legacy network-wide value
+        // out into filter-specific rows.
+        format!("{create_table_query}\n{create_latest_block_query}\n{latest_block_insert_queries}")
     }).collect::<Vec<_>>().join("\n")
 }
 
@@ -622,6 +658,25 @@ mod tests {
     use super::*;
     use crate::indexer::Indexer;
     use crate::manifest::native_transfer::NativeTransfers;
+
+    #[test]
+    fn event_cursor_ddl_migrates_to_exact_identity_without_fanning_out_legacy_progress() {
+        let event: EventInfo = serde_json::from_value(serde_json::json!({
+            "name": "Transfer",
+            "inputs": [],
+            "signature": "Transfer()",
+            "struct_result": "TransferResult",
+            "struct_data": "TransferData"
+        }))
+        .unwrap();
+        let sql = generate_internal_event_table_sql(&[event], "test_token", vec!["ethereum"]);
+
+        assert!(sql.contains("PRIMARY KEY (\"network\", \"detail_key\")"));
+        assert!(sql.contains("ADD COLUMN IF NOT EXISTS \"detail_key\""));
+        assert!(sql.contains("DEFAULT '__event__'"));
+        assert!(!sql.contains("detail_key\", \"last_synced_block\") VALUES"));
+        assert!(!sql.contains("MAX("));
+    }
 
     /// Raw event tables must be created for events that drive custom tables
     /// even without include_events — the runtime stores raw events for them
