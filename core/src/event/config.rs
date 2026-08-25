@@ -96,51 +96,68 @@ pub fn derive_detail_key(
         .collect()
     }
 
-    let (prefix, indexed_filter) = match indexing_contract_setup {
-        IndexingContractSetup::Address(details) => {
-            let address = match &details.address {
-                ValueOrArray::Value(address) => address.to_string(),
-                ValueOrArray::Array(addresses) if !addresses.is_empty() => {
-                    addresses.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
-                }
-                ValueOrArray::Array(_) => return LEGACY_DETAIL_KEY.to_string(),
-            };
-            let filter = details
-                .indexed_filters
-                .as_ref()
-                .and_then(|filters| filters.iter().find(|filter| filter.event_name == event_name));
-            (address, filter)
-        }
-        IndexingContractSetup::Factory(details) => {
-            let address = match &details.address {
-                ValueOrArray::Value(address) => address.to_string(),
-                ValueOrArray::Array(addresses) if !addresses.is_empty() => {
-                    addresses.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
-                }
-                ValueOrArray::Array(_) => return LEGACY_DETAIL_KEY.to_string(),
-            };
-            let filter = details
-                .indexed_filters
-                .as_ref()
-                .and_then(|filters| filters.iter().find(|filter| filter.event_name == event_name));
-            (address, filter)
-        }
-        IndexingContractSetup::Filter(details) => {
-            let filter =
-                details.indexed_filters.as_ref().filter(|filter| filter.event_name == event_name);
-            (format!("filter:{event_name}"), filter)
-        }
-    };
+    let (prefix, indexed_filters): (String, Vec<&EventInputIndexedFilters>) =
+        match indexing_contract_setup {
+            IndexingContractSetup::Address(details) => {
+                let address = match &details.address {
+                    ValueOrArray::Value(address) => address.to_string(),
+                    ValueOrArray::Array(addresses) if !addresses.is_empty() => {
+                        addresses.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
+                    }
+                    ValueOrArray::Array(_) => return LEGACY_DETAIL_KEY.to_string(),
+                };
+                let filter = details
+                    .indexed_filters
+                    .as_ref()
+                    .map(|filters| {
+                        filters.iter().filter(|filter| filter.event_name == event_name).collect()
+                    })
+                    .unwrap_or_default();
+                (address, filter)
+            }
+            IndexingContractSetup::Factory(details) => {
+                let address = match &details.address {
+                    ValueOrArray::Value(address) => address.to_string(),
+                    ValueOrArray::Array(addresses) if !addresses.is_empty() => {
+                        addresses.iter().map(ToString::to_string).collect::<Vec<_>>().join(",")
+                    }
+                    ValueOrArray::Array(_) => return LEGACY_DETAIL_KEY.to_string(),
+                };
+                let filter = details
+                    .indexed_filters
+                    .as_ref()
+                    .map(|filters| {
+                        filters.iter().filter(|filter| filter.event_name == event_name).collect()
+                    })
+                    .unwrap_or_default();
+                (address, filter)
+            }
+            IndexingContractSetup::Filter(details) => {
+                let filter = details
+                    .indexed_filters
+                    .as_ref()
+                    .map(|filters| {
+                        filters.iter().filter(|filter| filter.event_name == event_name).collect()
+                    })
+                    .unwrap_or_default();
+                (format!("filter:{event_name}"), filter)
+            }
+        };
 
-    let Some(indexed_filter) = indexed_filter else {
+    if indexed_filters.is_empty() {
         return LEGACY_DETAIL_KEY.to_string();
-    };
-    let positions = indexed_positions(indexed_filter);
-    if positions.is_empty() {
-        LEGACY_DETAIL_KEY.to_string()
-    } else {
-        format!("{prefix}:{}", positions.join(":")).to_ascii_lowercase()
     }
+
+    let mut alternatives = Vec::with_capacity(indexed_filters.len());
+    for indexed_filter in indexed_filters {
+        let positions = indexed_positions(indexed_filter);
+        if positions.is_empty() {
+            return LEGACY_DETAIL_KEY.to_string();
+        }
+        alternatives.push(positions.join(":"));
+    }
+
+    format!("{prefix}:{}", alternatives.join("|")).to_ascii_lowercase()
 }
 
 impl ContractEventProcessingConfig {
@@ -614,10 +631,32 @@ mod detail_key_tests {
     fn filter_mode_detail_has_an_exact_nonlegacy_key() {
         let setup = IndexingContractSetup::Filter(FilterDetails {
             events: ValueOrArray::Value("Transfer".to_string()),
-            indexed_filters: Some(indexed_filter(1, "wallet")),
+            indexed_filters: Some(vec![indexed_filter(1, "wallet")]),
         });
 
         assert_eq!(derive_detail_key(&setup, "Transfer"), "filter:transfer:i1:wallet");
+    }
+
+    #[test]
+    fn filter_mode_detail_key_includes_every_matching_alternative_in_manifest_order() {
+        let setup = IndexingContractSetup::Filter(FilterDetails {
+            events: ValueOrArray::Value("Transfer".to_string()),
+            indexed_filters: Some(vec![
+                indexed_filter(1, "from-wallet"),
+                indexed_filter(2, "to-wallet"),
+                EventInputIndexedFilters {
+                    event_name: "Approval".to_string(),
+                    indexed_1: Some(vec!["owner".to_string()]),
+                    indexed_2: None,
+                    indexed_3: None,
+                },
+            ]),
+        });
+
+        assert_eq!(
+            derive_detail_key(&setup, "Transfer"),
+            "filter:transfer:i1:from-wallet|i2:to-wallet"
+        );
     }
 
     #[test]
