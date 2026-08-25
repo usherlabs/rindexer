@@ -909,6 +909,18 @@ async fn live_indexing_for_contract_event_dependencies(
     }
 }
 
+async fn complete_callback_before_cursor<CallbackFuture, CursorFuture>(
+    callback: CallbackFuture,
+    cursor: CursorFuture,
+) -> Result<(), String>
+where
+    CallbackFuture: std::future::Future<Output = Result<(), String>>,
+    CursorFuture: std::future::Future<Output = Result<(), String>>,
+{
+    callback.await?;
+    cursor.await
+}
+
 async fn trigger_event(
     config: Arc<EventProcessingConfig>,
     fn_data: Vec<EventResult>,
@@ -935,25 +947,29 @@ async fn trigger_event(
             return Ok(());
         }
     } else {
-        if let Err(error) = config.trigger_event(fn_data.clone()).await {
-            indexing_event_processed();
-            return Err(error);
-        }
+        let callback_config = Arc::clone(&config);
+        let callback = async move {
+            let result = callback_config.trigger_event(fn_data).await;
+            if result.is_err() {
+                indexing_event_processed();
+            }
+            result
+        };
+        let cursor =
+            update_progress_and_last_synced_task(config, to_block, indexing_event_processed);
+        return complete_callback_before_cursor(callback, cursor).await;
     }
 
-    {
-        // Double-index race NOTE: for the no-code POSTGRES-sole-sink path this is
-        // closed — no_code_callback commits [batch + rindexer_internal cursor] in
-        // ONE transaction (insert_bulk_with_cursor), so this async advance is only
-        // the empty-range / tail bump (monotonic guard makes it a no-op otherwise).
-        // The race window still exists for: ClickHouse/CSV(-alongside-PG) and
-        // streams/chat configs (deliberately kept legacy — see atomic_pg_cursor
-        // in no_code.rs), custom Rust handlers, the trace path (its outer
-        // advance ignores the callback result), and factory discovery events
-        // (child-address bookkeeping commits after the callback).
-        update_progress_and_last_synced_task(config, to_block, indexing_event_processed).await?;
-    }
-    Ok(())
+    // Double-index race NOTE: for the no-code POSTGRES-sole-sink path this is
+    // closed — no_code_callback commits [batch + rindexer_internal cursor] in
+    // ONE transaction (insert_bulk_with_cursor), so this async advance is only
+    // the empty-range / tail bump (monotonic guard makes it a no-op otherwise).
+    // The race window still exists for: ClickHouse/CSV(-alongside-PG) and
+    // streams/chat configs (deliberately kept legacy — see atomic_pg_cursor
+    // in no_code.rs), custom Rust handlers, the trace path (its outer
+    // advance ignores the callback result), and factory discovery events
+    // (child-address bookkeeping commits after the callback).
+    update_progress_and_last_synced_task(config, to_block, indexing_event_processed).await
 }
 
 async fn handle_logs_result(
@@ -1021,7 +1037,7 @@ mod tests {
 
     use super::*;
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     };
     use std::task::Poll;
@@ -1090,6 +1106,34 @@ mod tests {
         assert!(
             ensure_logs_stream_end_is_expected(true, true, false, true, "event", "detail").is_ok()
         );
+    }
+
+    #[tokio::test]
+    async fn callback_failure_does_not_poll_cursor_persistence() {
+        let cursor_polled = Arc::new(AtomicBool::new(false));
+        let cursor_observation = Arc::clone(&cursor_polled);
+
+        let result = complete_callback_before_cursor(
+            async { Err("injected callback failure".to_string()) },
+            async move {
+                cursor_observation.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await;
+
+        assert_eq!(result, Err("injected callback failure".to_string()));
+        assert!(!cursor_polled.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn cursor_failure_remains_terminal_after_callback_success() {
+        let result = complete_callback_before_cursor(async { Ok(()) }, async {
+            Err("injected cursor failure".to_string())
+        })
+        .await;
+
+        assert_eq!(result, Err("injected cursor failure".to_string()));
     }
 
     #[tokio::test]
