@@ -2,7 +2,7 @@
 
 ### Breaking changes
 -------------------------------------------------
-- breaking: **Exact Rust-indexing detail cursors** — `rindexer_internal` event cursor tables now key progress by `network` and opaque `detail_key`; downstream Rust callbacks and existing databases must migrate or replay each manifest detail instead of treating a network-wide cursor as exact coverage.
+- breaking: **Exact Rust-indexing detail cursors** — `rindexer_internal` event cursor tables now key progress by `network` and opaque `detail_key`; multiple same-event filter alternatives retain manifest order in that key, and downstream Rust callbacks and existing databases must migrate or replay each manifest detail instead of treating a network-wide cursor as exact coverage.
 
 ### Bug fixes
 -------------------------------------------------
