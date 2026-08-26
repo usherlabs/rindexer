@@ -433,7 +433,7 @@ async fn run_one_iteration(
     // Run rindexer concurrently with a driver that mines a few extra blocks
     // to keep live's safe-distance threshold advancing, then waits for all
     // rows and shuts down.
-    let rindexer_fut = rindexer::start_rindexer_no_code(StartNoCodeDetails {
+    let rindexer_fut = rindexer::start_rindexer_no_code_embedded(StartNoCodeDetails {
         manifest_path: &manifest_path,
         indexing_details: IndexerNoCodeDetails { enabled: true },
         graphql_details: GraphqlOverrideSettings { enabled: false, override_port: None },

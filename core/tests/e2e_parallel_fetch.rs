@@ -402,12 +402,12 @@ async fn query_ping_rows(pg: &tokio_postgres::Client, schema: &str) -> Vec<PingR
 }
 
 /// Run rindexer's historical-only pipeline programmatically and return once
-/// indexing completes (no live-indexing, no graphql, so start_rindexer_no_code
+/// indexing completes (no live-indexing, no graphql, so the embedded runner
 /// exits when historical sync finishes).
 async fn run_rindexer_historical(manifest_path: PathBuf) {
     // Historical-only: live_indexing defaults to false for a contract with
-    // an end_block set; start_rindexer_no_code returns after historical sync.
-    let result = rindexer::start_rindexer_no_code(StartNoCodeDetails {
+    // an end_block set; the embedded runner returns after historical sync.
+    let result = rindexer::start_rindexer_no_code_embedded(StartNoCodeDetails {
         manifest_path: &manifest_path,
         indexing_details: IndexerNoCodeDetails { enabled: true },
         graphql_details: GraphqlOverrideSettings { enabled: false, override_port: None },
@@ -703,7 +703,7 @@ async fn parallel_historical_to_live_transition() {
     let schema = "parallel_hist_to_live_ping_pong";
     const LIVE_PINGS: u64 = 100;
 
-    let rindexer_fut = rindexer::start_rindexer_no_code(StartNoCodeDetails {
+    let rindexer_fut = rindexer::start_rindexer_no_code_embedded(StartNoCodeDetails {
         manifest_path: &manifest_path,
         indexing_details: IndexerNoCodeDetails { enabled: true },
         graphql_details: GraphqlOverrideSettings { enabled: false, override_port: None },
@@ -811,7 +811,7 @@ async fn live_from_head_seeds_exact_cursor_before_first_advance() {
     write_manifest_live_from_head(tmp.path(), "LiveFromHead", &env.rpc_url, contract);
     let manifest_path = tmp.path().join("rindexer.yaml");
 
-    let rindexer_fut = rindexer::start_rindexer_no_code(StartNoCodeDetails {
+    let rindexer_fut = rindexer::start_rindexer_no_code_embedded(StartNoCodeDetails {
         manifest_path: &manifest_path,
         indexing_details: IndexerNoCodeDetails { enabled: true },
         graphql_details: GraphqlOverrideSettings { enabled: false, override_port: None },
@@ -845,7 +845,22 @@ async fn live_from_head_seeds_exact_cursor_before_first_advance() {
 
     let cursor = tokio::select! {
         result = rindexer_fut => {
-            panic!("rindexer exited before the live-from-head cursor was observed: {result:?}");
+            result.expect("live-from-head indexing exited with an error");
+            let pg = env.pg_client().await;
+            let row = pg
+                .query_opt(
+                    "SELECT last_synced_block::bigint FROM rindexer_internal.live_from_head_ping_pong_ping WHERE network = 'dev' AND detail_key = '__event__'",
+                    &[],
+                )
+                .await
+                .expect("query live-from-head cursor after clean completion");
+            row.map(|row| row.get::<_, i64>(0) as u64)
+                .filter(|cursor| *cursor >= expected_head)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "rindexer exited before durably covering head {expected_head}"
+                    )
+                })
         }
         cursor = driver_fut => cursor,
     };
