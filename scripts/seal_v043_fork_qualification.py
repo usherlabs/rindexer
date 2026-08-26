@@ -8,7 +8,8 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
-from pathlib import Path
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -19,6 +20,8 @@ CANONICAL_TAG = "v0.43.0"
 CANONICAL_COMMIT = "4f441289b83855c357239d2729fb725a56c3060b"
 CANONICAL_TREE = "80a2698f6be13949d84d920b01c02125af598d09"
 GIT_OID = re.compile(r"^[0-9a-f]{40}$")
+QUALIFICATION_DIRECTORY = re.compile(r"^qualification/[a-z0-9][a-z0-9.-]*$")
+CANDIDATE_BRANCH = re.compile(r"^fiet/[a-z0-9](?:[a-z0-9./-]*[a-z0-9])?$")
 REQUIRED_RUNS = frozenset(
     {
         "governance_schema_and_ancestry",
@@ -33,15 +36,6 @@ REQUIRED_RUNS = frozenset(
         "docker_e2e",
     }
 )
-ARTIFACT_PATHS = {
-    "inventory": "qualification/v0.43/candidate-downstream-patch-inventory.json",
-    "ledger": "qualification/v0.43/candidate-downstream-patches.json",
-    "governed_paths": "qualification/v0.43/candidate-governed-paths.json",
-    "embedded_lifecycle_receipt": (
-        "qualification/v0.43/candidate-embedded-lifecycle-receipt.json"
-    ),
-    "test_results": "qualification/v0.43/candidate-test-results.json",
-}
 LIVE_GOVERNANCE_PATHS = {
     "inventory": "downstream-patch-inventory.json",
     "ledger": "downstream-patches.json",
@@ -51,6 +45,62 @@ LIVE_GOVERNANCE_PATHS = {
 
 class ForkQualificationSealError(ValueError):
     """Raised when incomplete or drifting fork evidence cannot be sealed."""
+
+
+@dataclass(frozen=True)
+class QualificationLayout:
+    """Safe, attempt-specific paths and source identity for retained evidence."""
+
+    qualification_directory: str
+    candidate_branch: str
+
+    @classmethod
+    def create(
+        cls, qualification_directory: str | Path, candidate_branch: str
+    ) -> "QualificationLayout":
+        directory = str(qualification_directory)
+        posix_directory = PurePosixPath(directory)
+        if (
+            "\\" in directory
+            or posix_directory.is_absolute()
+            or ".." in posix_directory.parts
+            or not QUALIFICATION_DIRECTORY.fullmatch(directory)
+        ):
+            raise ForkQualificationSealError(
+                "qualification directory must be qualification/<safe-attempt-id>"
+            )
+        if (
+            ".." in candidate_branch
+            or "//" in candidate_branch
+            or not CANDIDATE_BRANCH.fullmatch(candidate_branch)
+        ):
+            raise ForkQualificationSealError(
+                "candidate branch must be a safe fiet/<branch> name"
+            )
+        return cls(directory, candidate_branch)
+
+    @property
+    def artifact_paths(self) -> dict[str, str]:
+        prefix = self.qualification_directory
+        return {
+            "inventory": f"{prefix}/candidate-downstream-patch-inventory.json",
+            "ledger": f"{prefix}/candidate-downstream-patches.json",
+            "governed_paths": f"{prefix}/candidate-governed-paths.json",
+            "embedded_lifecycle_receipt": (
+                f"{prefix}/candidate-embedded-lifecycle-receipt.json"
+            ),
+            "test_results": f"{prefix}/candidate-test-results.json",
+        }
+
+    @property
+    def receipt_path(self) -> str:
+        return f"{self.qualification_directory}/candidate-fork-qualification-receipt.json"
+
+
+LEGACY_LAYOUT = QualificationLayout.create(
+    "qualification/v0.43", "fiet/candidate-v0.43.0-1"
+)
+ARTIFACT_PATHS = LEGACY_LAYOUT.artifact_paths
 
 
 def _load_object(path: Path) -> Mapping[str, Any]:
@@ -64,7 +114,9 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def stage_candidate_governance_snapshots(repo_root: Path) -> None:
+def stage_candidate_governance_snapshots(
+    repo_root: Path, layout: QualificationLayout = LEGACY_LAYOUT
+) -> None:
     """Retain the candidate governance inputs once, without later rewrites."""
     repo_root = repo_root.resolve()
     labels = {
@@ -74,7 +126,7 @@ def stage_candidate_governance_snapshots(repo_root: Path) -> None:
     }
     for name, live_relative in LIVE_GOVERNANCE_PATHS.items():
         live_path = repo_root / live_relative
-        snapshot_path = repo_root / ARTIFACT_PATHS[name]
+        snapshot_path = repo_root / layout.artifact_paths[name]
         content = live_path.read_bytes()
         if snapshot_path.exists():
             if snapshot_path.read_bytes() != content:
@@ -120,8 +172,11 @@ def _validate_results(results: Mapping[str, Any]) -> None:
         )
 
 
-def _validate_bound_artifacts(repo_root: Path) -> None:
-    ledger = _load_object(repo_root / ARTIFACT_PATHS["ledger"])
+def _validate_bound_artifacts(
+    repo_root: Path, layout: QualificationLayout = LEGACY_LAYOUT
+) -> None:
+    artifact_paths = layout.artifact_paths
+    ledger = _load_object(repo_root / artifact_paths["ledger"])
     release = ledger.get("release")
     if not isinstance(release, Mapping) or release.get("state") != "candidate":
         raise ForkQualificationSealError(
@@ -137,7 +192,7 @@ def _validate_bound_artifacts(repo_root: Path) -> None:
         )
 
     lifecycle = _load_object(
-        repo_root / ARTIFACT_PATHS["embedded_lifecycle_receipt"]
+        repo_root / artifact_paths["embedded_lifecycle_receipt"]
     )
     if lifecycle.get("verdict") != "pass":
         raise ForkQualificationSealError(
@@ -146,15 +201,24 @@ def _validate_bound_artifacts(repo_root: Path) -> None:
 
 
 def build_fork_qualification_receipt(
-    repo_root: Path, results_path: Path
+    repo_root: Path,
+    results_path: Path,
+    layout: QualificationLayout = LEGACY_LAYOUT,
 ) -> dict[str, Any]:
     repo_root = repo_root.resolve()
     results_path = results_path.resolve()
+    expected_results_path = (
+        repo_root / layout.artifact_paths["test_results"]
+    ).resolve()
+    if results_path != expected_results_path:
+        raise ForkQualificationSealError(
+            f"test results must use the retained attempt path: {layout.artifact_paths['test_results']}"
+        )
     results = _load_object(results_path)
     _validate_results(results)
 
     artifacts: dict[str, dict[str, str]] = {}
-    for name, relative_path in ARTIFACT_PATHS.items():
+    for name, relative_path in layout.artifact_paths.items():
         path = repo_root / relative_path
         if not path.is_file():
             raise ForkQualificationSealError(
@@ -162,7 +226,7 @@ def build_fork_qualification_receipt(
             )
         artifacts[name] = {"path": relative_path, "sha256": _sha256(path)}
 
-    _validate_bound_artifacts(repo_root)
+    _validate_bound_artifacts(repo_root, layout)
 
     source = results["source_under_test"]
     return {
@@ -177,7 +241,7 @@ def build_fork_qualification_receipt(
         },
         "downstream_source": {
             "repository": "https://github.com/usherlabs/rindexer",
-            "branch": "fiet/candidate-v0.43.0-1",
+            "branch": layout.candidate_branch,
             "commit": source["commit"],
             "tree": source["tree"],
         },
@@ -190,7 +254,9 @@ def build_fork_qualification_receipt(
 
 
 def verify_fork_qualification_receipt(
-    repo_root: Path, receipt: Mapping[str, Any]
+    repo_root: Path,
+    receipt: Mapping[str, Any],
+    layout: QualificationLayout | None = None,
 ) -> list[str]:
     repo_root = repo_root.resolve()
     errors: list[str] = []
@@ -219,7 +285,31 @@ def verify_fork_qualification_receipt(
     artifacts = receipt.get("artifacts")
     if not isinstance(artifacts, Mapping):
         return sorted(set(errors + ["artifact bindings are missing"]))
-    for name, expected_path in ARTIFACT_PATHS.items():
+    if layout is None:
+        inventory = artifacts.get("inventory")
+        inventory_path = (
+            inventory.get("path") if isinstance(inventory, Mapping) else None
+        )
+        branch = downstream.get("branch") if isinstance(downstream, Mapping) else None
+        try:
+            if not isinstance(inventory_path, str) or not isinstance(branch, str):
+                raise ForkQualificationSealError(
+                    "receipt cannot determine its qualification layout"
+                )
+            inventory_posix = PurePosixPath(inventory_path)
+            if inventory_posix.name != "candidate-downstream-patch-inventory.json":
+                raise ForkQualificationSealError("inventory path mismatch")
+            layout = QualificationLayout.create(str(inventory_posix.parent), branch)
+        except ForkQualificationSealError as error:
+            return sorted(set(errors + [str(error)]))
+    if (
+        isinstance(downstream, Mapping)
+        and downstream.get("branch") != layout.candidate_branch
+    ):
+        errors.append("downstream branch does not match qualification layout")
+
+    artifact_paths = layout.artifact_paths
+    for name, expected_path in artifact_paths.items():
         binding = artifacts.get(name)
         if not isinstance(binding, Mapping):
             errors.append(f"{name} binding is missing")
@@ -234,7 +324,7 @@ def verify_fork_qualification_receipt(
         if binding.get("sha256") != _sha256(path):
             errors.append(f"{name} SHA-256 mismatch")
 
-    results_path = repo_root / ARTIFACT_PATHS["test_results"]
+    results_path = repo_root / artifact_paths["test_results"]
     if results_path.is_file():
         try:
             results = _load_object(results_path)
@@ -254,7 +344,7 @@ def verify_fork_qualification_receipt(
         except ForkQualificationSealError as error:
             errors.append(str(error))
     try:
-        _validate_bound_artifacts(repo_root)
+        _validate_bound_artifacts(repo_root, layout)
     except ForkQualificationSealError as error:
         errors.append(str(error))
     return sorted(set(errors))
@@ -266,25 +356,38 @@ def main() -> int:
         "--repo-root", type=Path, default=Path(__file__).resolve().parents[1]
     )
     parser.add_argument(
-        "--results",
+        "--qualification-dir",
         type=Path,
-        default=Path("qualification/v0.43/candidate-test-results.json"),
+        default=Path(LEGACY_LAYOUT.qualification_directory),
     )
     parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path("qualification/v0.43/candidate-fork-qualification-receipt.json"),
+        "--candidate-branch", default=LEGACY_LAYOUT.candidate_branch
     )
+    parser.add_argument("--results", type=Path)
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--verify", action="store_true")
     args = parser.parse_args()
 
     repo_root = args.repo_root.resolve()
-    results_path = args.results if args.results.is_absolute() else repo_root / args.results
-    output_path = args.output if args.output.is_absolute() else repo_root / args.output
     try:
+        layout = QualificationLayout.create(
+            args.qualification_dir, args.candidate_branch
+        )
+        results_argument = args.results or Path(layout.artifact_paths["test_results"])
+        output_argument = args.output or Path(layout.receipt_path)
+        results_path = (
+            results_argument
+            if results_argument.is_absolute()
+            else repo_root / results_argument
+        )
+        output_path = (
+            output_argument
+            if output_argument.is_absolute()
+            else repo_root / output_argument
+        )
         if args.verify:
             errors = verify_fork_qualification_receipt(
-                repo_root, _load_object(output_path)
+                repo_root, _load_object(output_path), layout
             )
             if errors:
                 for error in errors:
@@ -293,8 +396,8 @@ def main() -> int:
             print(f"fork qualification receipt is valid: {output_path}")
             return 0
 
-        stage_candidate_governance_snapshots(repo_root)
-        receipt = build_fork_qualification_receipt(repo_root, results_path)
+        stage_candidate_governance_snapshots(repo_root, layout)
+        receipt = build_fork_qualification_receipt(repo_root, results_path, layout)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
         print(f"wrote fork qualification receipt: {output_path}")

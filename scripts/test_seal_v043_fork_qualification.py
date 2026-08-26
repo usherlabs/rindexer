@@ -11,6 +11,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 
 from seal_v043_fork_qualification import (  # noqa: E402
     ForkQualificationSealError,
+    QualificationLayout,
     build_fork_qualification_receipt,
     stage_candidate_governance_snapshots,
     verify_fork_qualification_receipt,
@@ -181,6 +182,70 @@ class SealV043ForkQualificationTests(unittest.TestCase):
 
         errors = verify_fork_qualification_receipt(self.repo_root, receipt)
         self.assertIn("qualification_runs do not match bound test results", errors)
+
+    def test_replacement_attempt_uses_independent_retained_artifacts(self):
+        legacy_inventory = self.artifact_paths["inventory"].read_bytes()
+        layout = QualificationLayout.create(
+            "qualification/v0.43.0-2",
+            "fiet/exact-cursor-seed-no-start-v0.43",
+        )
+
+        stage_candidate_governance_snapshots(self.repo_root, layout)
+        replacement_lifecycle = self.repo_root / layout.artifact_paths[
+            "embedded_lifecycle_receipt"
+        ]
+        replacement_lifecycle.write_text(
+            json.dumps({"verdict": "pass"}) + "\n", encoding="utf-8"
+        )
+        replacement_results = self.repo_root / layout.artifact_paths["test_results"]
+        replacement_results.write_text(
+            json.dumps(self.results, indent=2) + "\n", encoding="utf-8"
+        )
+
+        receipt = build_fork_qualification_receipt(
+            self.repo_root, replacement_results, layout
+        )
+
+        self.assertEqual(
+            receipt["downstream_source"]["branch"],
+            "fiet/exact-cursor-seed-no-start-v0.43",
+        )
+        self.assertEqual(
+            receipt["artifacts"]["inventory"]["path"],
+            "qualification/v0.43.0-2/candidate-downstream-patch-inventory.json",
+        )
+        self.assertEqual(
+            self.artifact_paths["inventory"].read_bytes(), legacy_inventory
+        )
+        self.assertEqual(
+            verify_fork_qualification_receipt(self.repo_root, receipt), []
+        )
+
+    def test_qualification_directory_must_be_safe_and_repository_relative(self):
+        for unsafe_path in (
+            "/tmp/qualification",
+            "../qualification/v0.43.0-2",
+            "qualification/../v0.43.0-2",
+            "qualification",
+        ):
+            with self.subTest(path=unsafe_path), self.assertRaises(
+                ForkQualificationSealError
+            ):
+                QualificationLayout.create(
+                    unsafe_path, "fiet/exact-cursor-seed-no-start-v0.43"
+                )
+
+    def test_candidate_branch_must_be_a_safe_fiet_branch(self):
+        for unsafe_branch in (
+            "main",
+            "fiet/../main",
+            "fiet/a..b",
+            "fiet/Bad Branch",
+        ):
+            with self.subTest(branch=unsafe_branch), self.assertRaises(
+                ForkQualificationSealError
+            ):
+                QualificationLayout.create("qualification/v0.43.0-2", unsafe_branch)
 
 
 if __name__ == "__main__":

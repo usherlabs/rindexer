@@ -58,6 +58,7 @@
     "qualification/v0.43/candidate-governed-paths.json",
     "qualification/v0.43/candidate-fork-qualification-receipt.json",
     "qualification/v0.43/candidate-test-results.json",
+    "qualification/v0.43.0-2",
     "rust-toolchain.toml"
   ]
 }
