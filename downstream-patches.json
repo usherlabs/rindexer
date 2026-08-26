@@ -13,10 +13,10 @@
   },
   "release": {
     "branch": "fiet/v0.43",
-    "state": "candidate",
-    "tag": null,
-    "peeled_commit": null,
-    "peeled_tree": null
+    "state": "qualified",
+    "tag": "fiet-v0.43.0-1",
+    "peeled_commit": "76e72ce824c44f04e56a9a315766d4a67efddcee",
+    "peeled_tree": "23b2e212859f10115b3a05aae78f4fb13d868ac9"
   },
   "governed_paths": "governed-paths.json",
   "patches": [
