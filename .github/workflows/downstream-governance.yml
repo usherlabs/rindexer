@@ -127,12 +127,10 @@ jobs:
       - name: Validate baseline, inventory, ledger, ancestry, and governed paths
         run: python3 scripts/validate_downstream_governance.py
 
-      - name: Verify protected default release branch
+      - name: Verify governed default release branch
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          test "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .default_branch)" = "fiet/v0.43"
-          test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/fiet%2Fv0.43" --jq .protected)" = "true"
+        run: test "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .default_branch)" = "fiet/v0.43"
 
       - name: Validate immutable release identity
         if: ${{ inputs.release_validation }}

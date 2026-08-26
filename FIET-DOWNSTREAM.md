@@ -3,8 +3,8 @@
 `usherlabs/rindexer` has two deliberately different branch families:
 
 - `master` is a fast-forward-only mirror/reference for canonical `joshstevens19/rindexer`. FIET behavior never lands there.
-- `fiet/v<release>` is a protected downstream release line created directly from one verified canonical tag, commit, and root tree. `fiet/v0.43` begins at canonical `v0.43.0` commit `4f441289b83855c357239d2729fb725a56c3060b` and tree `80a2698f6be13949d84d920b01c02125af598d09`.
-- `fiet/<patch>-v<release>` is a narrow downstream patch branch. It targets the matching protected `fiet/v<release>` branch and carries a ledger entry, regression evidence, and an `FIET-PATCH:<id>` squash marker when the exact patch commit will not survive merging.
+- `fiet/v<release>` is a governed downstream release line created directly from one verified canonical tag, commit, and root tree. Pull requests and passing release/provenance checks are mandatory; repository review approval is optional. `fiet/v0.43` begins at canonical `v0.43.0` commit `4f441289b83855c357239d2729fb725a56c3060b` and tree `80a2698f6be13949d84d920b01c02125af598d09`.
+- `fiet/<patch>-v<release>` is a narrow downstream patch branch. It targets the matching governed `fiet/v<release>` branch and carries a ledger entry, regression evidence, and an `FIET-PATCH:<id>` squash marker when the exact patch commit will not survive merging.
 - `upstream/<patch>` is a portable contribution branch created from the applicable canonical tag. It must not contain the downstream governance commits or any other FIET-only ancestry.
 
 ## Canonical release adoption

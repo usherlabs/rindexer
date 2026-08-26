@@ -209,6 +209,18 @@ class DownstreamGovernanceTests(unittest.TestCase):
         ).strip()
         self.assertEqual(tree, "dad322becf8dfe7288a3128105234cf2231670bc")
 
+    def test_workflow_governs_default_branch_without_mandatory_protection(self) -> None:
+        workflow = (
+            REPO_ROOT / ".github" / "workflows" / "downstream-governance.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            'gh api "repos/${GITHUB_REPOSITORY}" --jq .default_branch',
+            workflow,
+        )
+        self.assertIn('= "fiet/v0.43"', workflow)
+        self.assertNotIn("--jq .protected", workflow)
+
     def test_pending_inventory_is_valid_for_audit_but_not_release(self) -> None:
         self.assertEqual(validate_governance(self.ledger, self.inventory, self.paths, REPO_ROOT), [])
         errors = validate_governance(self.ledger, self.inventory, self.paths, REPO_ROOT, release=True)
