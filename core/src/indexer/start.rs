@@ -146,9 +146,12 @@ async fn get_start_end_block(
         }
     }
 
+    // Establish the durable cursor identity for every detail, including
+    // live-from-head details that intentionally omit `start_block`. The
+    // persisted cursor only changes resume selection when historical indexing
+    // was explicitly configured, preserving live-from-head startup semantics.
+    let last_synced_block = get_last_synced_block_number(config).await?;
     let last_known_start_block = if manifest_start_block.is_some() {
-        let last_synced_block = get_last_synced_block_number(config).await?;
-
         if let Some(value) = last_synced_block {
             let start_from = value + U64::from(1);
             info!(
