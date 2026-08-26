@@ -53,11 +53,12 @@ jobs:
               -s schemas/v043-characterization-receipt.schema.json \
               -d characterization/v0.43/vanilla-baseline-receipt.json
           fi
-          if test -f qualification/v0.43/candidate-fork-qualification-receipt.json; then
+          while IFS= read -r receipt; do
             npx --yes ajv-cli@5.0.0 validate --spec=draft2020 --strict=true \
               -s schemas/v043-fork-qualification-receipt.schema.json \
-              -d qualification/v0.43/candidate-fork-qualification-receipt.json
-          fi
+              -d "$receipt"
+          done < <(find qualification -mindepth 2 -maxdepth 2 \
+            -name candidate-fork-qualification-receipt.json -print | sort)
 
       - name: Run governance regression tests
         run: >-
@@ -121,8 +122,17 @@ jobs:
         run: python3 scripts/seal_v043_characterization.py --verify
 
       - name: Verify sealed fork qualification evidence
-        if: ${{ hashFiles('qualification/v0.43/candidate-fork-qualification-receipt.json') != '' }}
-        run: python3 scripts/seal_v043_fork_qualification.py --verify
+        run: |
+          while IFS= read -r receipt; do
+            qualification_dir="$(dirname "$receipt")"
+            candidate_branch="$(jq -r .downstream_source.branch "$receipt")"
+            python3 scripts/seal_v043_fork_qualification.py \
+              --qualification-dir "$qualification_dir" \
+              --candidate-branch "$candidate_branch" \
+              --output "$receipt" \
+              --verify
+          done < <(find qualification -mindepth 2 -maxdepth 2 \
+            -name candidate-fork-qualification-receipt.json -print | sort)
 
       - name: Validate baseline, inventory, ledger, ancestry, and governed paths
         run: python3 scripts/validate_downstream_governance.py

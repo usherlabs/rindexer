@@ -37,7 +37,7 @@
       "required": ["repository", "branch", "commit", "tree"],
       "properties": {
         "repository": {"const": "https://github.com/usherlabs/rindexer"},
-        "branch": {"const": "fiet/candidate-v0.43.0-1"},
+        "branch": {"type": "string", "pattern": "^fiet/[a-z0-9](?:[a-z0-9./-]*[a-z0-9])?$"},
         "commit": {"$ref": "#/$defs/gitOid"},
         "tree": {"$ref": "#/$defs/gitOid"}
       }

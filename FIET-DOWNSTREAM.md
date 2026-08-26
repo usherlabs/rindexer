@@ -44,6 +44,23 @@ python3 scripts/validate_downstream_governance.py --release --verify-tag
 
 Qualified tags use `fiet-v<canonical-version>-<revision>`, beginning with `fiet-v0.43.0-1`. A tag is never retargeted. A failed release keeps its exact tag, commit, tree, ledger, and test evidence for forensic comparison.
 
+Each replacement qualification uses its own retained evidence directory. The
+original `fiet-v0.43.0-1` evidence remains under `qualification/v0.43`; the
+`fiet-v0.43.0-2` attempt uses `qualification/v0.43.0-2`. Seal a replacement
+without overwriting an earlier attempt by naming both its directory and the
+actual source branch:
+
+```bash
+python3 scripts/seal_v043_fork_qualification.py \
+  --qualification-dir qualification/v0.43.0-2 \
+  --candidate-branch fiet/exact-cursor-seed-no-start-v0.43
+```
+
+The sealer accepts only `qualification/<safe-attempt-id>` directories and
+`fiet/*` candidate branches. It binds the exact attempt paths, hashes, commit,
+tree, and branch. Historical v1 receipts remain read-only verifiable with the
+legacy defaults.
+
 ## Qualification toolchain
 
 Downstream CI and release workflows use the exact Rust toolchain recorded in
