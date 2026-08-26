@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch protected downstream release tip
+      - name: Fetch governed downstream release tip
         run: git fetch --no-tags origin refs/heads/fiet/v0.43:refs/remotes/origin/fiet/v0.43
 
       - name: Reject downstream-only ancestry and files
