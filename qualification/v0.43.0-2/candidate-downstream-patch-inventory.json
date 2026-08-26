@@ -1,0 +1,66 @@
+{
+  "$schema": "./schemas/downstream-patch-inventory.schema.json",
+  "schema_version": "fiet-rindexer-pre-convergence-inventory/v1",
+  "source": {
+    "repository": "https://github.com/outerlook/rindexer",
+    "branch": "fix/multi-indexed-filter",
+    "base_tag": "v0.35.0",
+    "base_commit": "bd127841c771f0d76f93a0972282f95780cbccdc",
+    "base_tree": "b40c1c93077cd16e3f746d3c98cf0ed8ce9b9309",
+    "head_commit": "e4c4b14b9a0d067da12778ff959053a01c700d88",
+    "head_tree": "bfd9a066a366486e32b58ab6bd62bb8625f8c994"
+  },
+  "items": [
+    {
+      "id": "outerlook-5583ca2-native-transfer-end-block",
+      "commit": "5583ca26e3c7422258a298e65cdbad36e7950fe1",
+      "parents": ["bd127841c771f0d76f93a0972282f95780cbccdc"],
+      "title": "fix: use calculated end_block for native_transfer_block_fetch"
+    },
+    {
+      "id": "outerlook-9d0efbf-native-transfer-channel-closure",
+      "commit": "9d0efbf9872b08df778c530558bbb6ee4504cf3b",
+      "parents": ["5583ca26e3c7422258a298e65cdbad36e7950fe1"],
+      "title": "fix: exit block processor when channel closes"
+    },
+    {
+      "id": "outerlook-450ae49-multiple-indexed-filters",
+      "commit": "450ae497280bf8efee3644a23a6241fbf37a47e0",
+      "parents": ["9d0efbf9872b08df778c530558bbb6ee4504cf3b"],
+      "title": "fix: support multiple indexed_filters for filter-mode contracts"
+    },
+    {
+      "id": "outerlook-3003dca-live-native-transfers",
+      "commit": "3003dca5e79ccb1e7bd8886d48c921f5048171a8",
+      "parents": ["450ae497280bf8efee3644a23a6241fbf37a47e0"],
+      "title": "fix: run native transfer indexing in the live pass so it follows the head"
+    },
+    {
+      "id": "outerlook-85b7dad-per-detail-cursors",
+      "commit": "85b7dadf3c54f8a201e60b2ed7cb17389fd30da9",
+      "parents": ["3003dca5e79ccb1e7bd8886d48c921f5048171a8"],
+      "title": "fix: track event cursors per manifest detail"
+    },
+    {
+      "id": "outerlook-cbb88d2-live-stream-eof",
+      "commit": "cbb88d2eed9f33792a4be2da5bc2e78c82a398aa",
+      "parents": ["85b7dadf3c54f8a201e60b2ed7cb17389fd30da9"],
+      "title": "fix: fail when a live event stream ends"
+    },
+    {
+      "id": "outerlook-986998e-live-retry-ranges",
+      "commit": "986998e3d98f04fd1a4aa749e9bf9deb88ff63ce",
+      "parents": ["cbb88d2eed9f33792a4be2da5bc2e78c82a398aa"],
+      "title": "fix: validate live fetch retry ranges"
+    },
+    {
+      "id": "outerlook-e4c4b14-merge-head",
+      "commit": "e4c4b14b9a0d067da12778ff959053a01c700d88",
+      "parents": [
+        "cbb88d2eed9f33792a4be2da5bc2e78c82a398aa",
+        "986998e3d98f04fd1a4aa749e9bf9deb88ff63ce"
+      ],
+      "title": "Merge pull request #1 from outerlook/fix/live-retry-range-invariant"
+    }
+  ]
+}

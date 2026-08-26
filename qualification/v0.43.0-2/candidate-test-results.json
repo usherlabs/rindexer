@@ -1,0 +1,106 @@
+{
+  "schema_version": "fiet-rindexer-v043-fork-test-results/v1",
+  "created_at": "2026-08-26T14:44:14Z",
+  "source_under_test": {
+    "commit": "fa4fdf93c4a9947af72b5740b66d561f3867a3da",
+    "tree": "bbece3e57b33c10084108689426dfc900c54cdde",
+    "canonical_baseline_commit": "4f441289b83855c357239d2729fb725a56c3060b",
+    "canonical_baseline_tree": "80a2698f6be13949d84d920b01c02125af598d09"
+  },
+  "behavioral_source": {
+    "commit": "fa4fdf93c4a9947af72b5740b66d561f3867a3da",
+    "tree": "bbece3e57b33c10084108689426dfc900c54cdde",
+    "later_candidate_paths_are_non_behavioral": [
+      "downstream-patches.json",
+      "qualification/v0.43.0-2"
+    ]
+  },
+  "toolchain": {
+    "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+    "cargo_nextest": "cargo-nextest 0.9.143 (60fa45f63 2026-08-04)",
+    "host": "x86_64-unknown-linux-gnu",
+    "kernel": "Linux 6.17.0-1022-azure",
+    "all_features_bindgen_extra_clang_args": "-isystem /usr/lib/gcc/x86_64-linux-gnu/13/include -isystem /usr/include -isystem /usr/include/x86_64-linux-gnu"
+  },
+  "runs": [
+    {
+      "kind": "governance_schema_and_ancestry",
+      "command": "AJV draft-2020 schemas; Python governance regressions; pinned-baseline probes; validate_downstream_governance.py",
+      "result": "pass",
+      "notes": "The corrected candidate ledger has one final disposition per inventory item, zero pending items, valid active ancestry, and no unledgered governed path. The post-rebase ledger reconciliation passes audit validation.",
+      "evidence_url": "https://github.com/usherlabs/rindexer/actions/runs/32941886221"
+    },
+    {
+      "kind": "clippy_workspace_all_targets",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "result": "pass",
+      "notes": "Passed on the corrected fork PR. The same CI run's coverage rerun passed after a first-attempt transient ClickHouse image-pull stream failure on the unchanged source SHA.",
+      "evidence_url": "https://github.com/usherlabs/rindexer/actions/runs/32941886152"
+    },
+    {
+      "kind": "rindexer_package",
+      "command": "cargo nextest run -p rindexer",
+      "result": "pass",
+      "tests": 888,
+      "skipped": 4,
+      "notes": "Covers filter shape, detail keys, Bloom progress, retry ranges, stream completion, native-transfer closure, reorg configuration and rewind, restart, redelivery, HyperSync-off, exact-cursor migration, and live-from-head exact-cursor seeding."
+    },
+    {
+      "kind": "exact_cursor_postgres",
+      "command": "cargo nextest run -p rindexer --test postgres_atomic_cursor",
+      "result": "pass",
+      "tests": 8,
+      "skipped": 0,
+      "notes": "Includes rollback when cursor persistence fails, no legacy fan-out, fail-closed missing seeds, concurrent legacy/exact seeding, and exact-member reorg rewind."
+    },
+    {
+      "kind": "callback_failure_ordering",
+      "command": "cargo nextest run -p rindexer callback_failure_does_not_poll_cursor_persistence cursor_failure_remains_terminal_after_callback_success",
+      "result": "pass",
+      "tests": 2,
+      "skipped": 0,
+      "notes": "Normative callback completion is ordered before durable cursor advancement."
+    },
+    {
+      "kind": "embedded_lifecycle_process",
+      "command": "python3 scripts/qualify_embedded_lifecycle.py --binary target/debug/examples/embedded_lifecycle_probe --anvil $(command -v anvil) --output qualification/v0.43.0-2/candidate-embedded-lifecycle-receipt.json",
+      "result": "pass",
+      "tests": 3,
+      "skipped": 0,
+      "notes": "SIGTERM and SIGINT drain successfully; forced timeout exits 42; the engine binds no health listener and owns no process signal handler."
+    },
+    {
+      "kind": "unexpected_live_eof_process",
+      "command": "cargo nextest run -p rindexer unexpected_live_stream_eof_reaches_a_nonzero_process_exit -- --exact",
+      "result": "pass",
+      "tests": 1,
+      "skipped": 0,
+      "notes": "Unexpected live-stream completion exits the child process with non-zero status 67."
+    },
+    {
+      "kind": "workspace_default_features",
+      "command": "cargo nextest run --exclude rindexer_rust_playground --workspace",
+      "result": "pass",
+      "tests": 911,
+      "skipped": 4,
+      "notes": "Full default-feature workspace qualification passed locally and on the corrected fork PR."
+    },
+    {
+      "kind": "workspace_all_features",
+      "command": "BINDGEN_EXTRA_CLANG_ARGS='-isystem /usr/lib/gcc/x86_64-linux-gnu/13/include -isystem /usr/include -isystem /usr/include/x86_64-linux-gnu' cargo nextest run --exclude rindexer_rust_playground --workspace --all-features --no-tests=fail --no-fail-fast",
+      "result": "pass",
+      "tests": 923,
+      "skipped": 4,
+      "notes": "All-feature qualification passed locally; explicit GCC/system include roots compensated for the host image's missing Clang resource headers without changing the machine."
+    },
+    {
+      "kind": "docker_e2e",
+      "command": "cargo run --bin e2e-tests -- --rindexer-binary target/release/rindexer_cli",
+      "result": "pass",
+      "notes": "Fresh GitHub-hosted PostgreSQL, Foundry, GraphQL, release binary, and E2E test-binary campaign passed on the corrected fork PR.",
+      "evidence_url": "https://github.com/usherlabs/rindexer/actions/runs/32941886141"
+    }
+  ],
+  "hard_gate_failures": [],
+  "verdict": "pass"
+}
