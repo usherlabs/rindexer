@@ -327,6 +327,46 @@ contracts:
     std::fs::write(dir.join("rindexer.yaml"), yaml).expect("write yaml");
 }
 
+/// Live-only manifest variant with no configured `start_block`. The engine
+/// must still seed its exact cursor before the first current-head advance.
+fn write_manifest_live_from_head(
+    dir: &std::path::Path,
+    indexer_name: &str,
+    rpc_url: &str,
+    contract_address: Address,
+) {
+    std::fs::create_dir_all(dir.join("abis")).expect("mkdir abis");
+    std::fs::write(dir.join("abis/PingPong.abi.json"), PING_PONG_ABI).expect("write abi");
+
+    let yaml = format!(
+        r#"name: {indexer_name}
+description: "Live-from-head exact cursor seed e2e"
+repository: "https://example.invalid"
+project_type: no-code
+networks:
+  - name: dev
+    chain_id: 31337
+    rpc: {rpc_url}
+storage:
+  postgres:
+    enabled: true
+native_transfers: false
+contracts:
+  - name: PingPong
+    details:
+      - network: dev
+        address: "{contract_address:#x}"
+    abi: ./abis/PingPong.abi.json
+    include_events:
+      - Ping
+"#,
+        indexer_name = indexer_name,
+        rpc_url = rpc_url,
+        contract_address = contract_address,
+    );
+    std::fs::write(dir.join("rindexer.yaml"), yaml).expect("write yaml");
+}
+
 /// Rows returned from the Ping event table, normalized to a tuple of
 /// (id, block_number, tx_hash, log_index) for cross-run comparison. We include
 /// enough columns that any ordering / deduplication / metadata-attachment
@@ -759,4 +799,56 @@ async fn parallel_historical_to_live_transition() {
             .find(|r| r.id == want_id && r.block_number == want_blk)
             .unwrap_or_else(|| panic!("missing Ping(id={}, block={})", id, blk));
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn live_from_head_seeds_exact_cursor_before_first_advance() {
+    let env = TestEnv::new().await;
+    let contract = deploy_ping_pong(&env.http, &env.rpc_url, env.deployer).await;
+    let expected_head = get_block_number(&env.http, &env.rpc_url).await;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    write_manifest_live_from_head(tmp.path(), "LiveFromHead", &env.rpc_url, contract);
+    let manifest_path = tmp.path().join("rindexer.yaml");
+
+    let rindexer_fut = rindexer::start_rindexer_no_code(StartNoCodeDetails {
+        manifest_path: &manifest_path,
+        indexing_details: IndexerNoCodeDetails { enabled: true },
+        graphql_details: GraphqlOverrideSettings { enabled: false, override_port: None },
+        watch: false,
+    });
+
+    let driver_fut = async {
+        let pg = env.pg_client().await;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            let row = pg
+                .query_opt(
+                    "SELECT last_synced_block::bigint FROM rindexer_internal.live_from_head_ping_pong_ping WHERE network = 'dev' AND detail_key = '__event__'",
+                    &[],
+                )
+                .await;
+            if let Ok(Some(row)) = row {
+                let cursor = row.get::<_, i64>(0) as u64;
+                if cursor >= expected_head {
+                    rindexer::initiate_shutdown().await;
+                    return cursor;
+                }
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "live-from-head cursor was not durably seeded and advanced"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    };
+
+    let cursor = tokio::select! {
+        result = rindexer_fut => {
+            panic!("rindexer exited before the live-from-head cursor was observed: {result:?}");
+        }
+        cursor = driver_fut => cursor,
+    };
+
+    assert_eq!(cursor, expected_head);
 }
