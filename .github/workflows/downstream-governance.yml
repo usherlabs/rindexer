@@ -31,7 +31,7 @@ jobs:
         run: >-
           git worktree add --detach
           "$RUNNER_TEMP/rindexer-v043-characterization"
-          de028ae38e1246b74e48e914cb2f34f17af56d64
+          49d4dccbc2888f1c97e279042ffea881177be329
 
       - uses: actions/setup-node@v4
         with:

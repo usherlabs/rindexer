@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 import subprocess
 import tempfile
 import unittest
@@ -185,6 +186,28 @@ class DownstreamGovernanceTests(unittest.TestCase):
         )
         self.assertEqual(receipt["merge_tree"], receipt["second_parent_tree"])
         self.assertFalse(receipt["independent_tree_delta"])
+
+    def test_workflow_characterization_anchor_is_reachable_and_tree_stable(self) -> None:
+        workflow = (REPO_ROOT / ".github" / "workflows" / "downstream-governance.yml").read_text(
+            encoding="utf-8"
+        )
+        match = re.search(
+            r"Prepare immutable v0\.43 characterization worktree.*?\n\s+([0-9a-f]{40})",
+            workflow,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match, "workflow characterization anchor is missing")
+        anchor = match.group(1)
+
+        ancestry = subprocess.run(
+            ["git", "-C", REPO_ROOT, "merge-base", "--is-ancestor", anchor, "HEAD"],
+            check=False,
+        )
+        self.assertEqual(ancestry.returncode, 0, "workflow characterization anchor is not in active ancestry")
+        tree = subprocess.check_output(
+            ["git", "-C", REPO_ROOT, "rev-parse", f"{anchor}^{{tree}}"], text=True
+        ).strip()
+        self.assertEqual(tree, "dad322becf8dfe7288a3128105234cf2231670bc")
 
     def test_pending_inventory_is_valid_for_audit_but_not_release(self) -> None:
         self.assertEqual(validate_governance(self.ledger, self.inventory, self.paths, REPO_ROOT), [])

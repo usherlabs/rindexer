@@ -70,7 +70,7 @@
         "focused regression failed by timeout before a23ab7de52d32fb4abbb828fba5fb9a8aa784160 and passed after it",
         "native-transfer module regression suite: 16 passed, 0 failed"
       ],
-      "downstream_commits": ["ce060993cd6be950c8d64ae7a1eda5293dea8375"],
+      "downstream_commits": ["c2a5052184dc338c4f8606688bb7a19fc7050b74"],
       "ancestry_markers": ["FIET-PATCH:outerlook-9d0efbf-native-transfer-channel-closure"]
     },
     {
@@ -102,7 +102,7 @@
         "cargo test -p rindexer --lib: 771 passed, 4 ignored",
         "cargo clippy -p rindexer --all-targets -- -D warnings"
       ],
-      "downstream_commits": ["cc1c2f66f313e3ce4328cfbc37af4e6c62a30fb3", "04bc9029e35aba3216f7669e6cd6e3aabab0b5d3"],
+      "downstream_commits": ["9d35cdffe9f2ed42ab5103cc63bbf96152d7d866", "764295293ebbc75a6e061676ec586bcbd6126b34"],
       "ancestry_markers": ["FIET-PATCH:outerlook-450ae49-multiple-indexed-filters"]
     },
     {
@@ -161,7 +161,7 @@
         "cargo test -p rindexer --lib: 775 passed, 4 ignored",
         "cargo clippy -p rindexer --all-targets -- -D warnings"
       ],
-      "downstream_commits": ["5796e768e4554783bf7a37e24c97901fe4116aa0", "04bc9029e35aba3216f7669e6cd6e3aabab0b5d3", "1521039dc38bb5a855d84c99f6101ace64447f2d"],
+      "downstream_commits": ["d0c79a13e9d06dc3b0de6f3ab2d2d493a3c40f18", "764295293ebbc75a6e061676ec586bcbd6126b34", "f9ae3777914164c1f6c8d9fce5bab51816ed67b2"],
       "ancestry_markers": ["FIET-PATCH:outerlook-85b7dad-per-detail-cursors"]
     },
     {
@@ -186,7 +186,7 @@
         "requested cancellation, process shutdown, finite runs, and forced historical completion remain successful",
         "cargo clippy -p rindexer --lib -- -D warnings"
       ],
-      "downstream_commits": ["1777b07112d6699a9f78ae271cb6a0ece5ef6703", "c8a22bc4fc4e53be1d06a0cffaf69d655e77b911"],
+      "downstream_commits": ["74b03ff73b6fb80744f68c5fe52ebc646b5435d5", "412121466c2015876431e1b9b4c854eae6f54d0b"],
       "ancestry_markers": ["FIET-PATCH:outerlook-cbb88d2-live-stream-eof"]
     },
     {
@@ -210,7 +210,7 @@
         "fetch-log module regressions: 48 passed, 0 failed",
         "cargo clippy -p rindexer --lib -- -D warnings"
       ],
-      "downstream_commits": ["78709a4bcb97f7789af0a31154081feeced7e8c9"],
+      "downstream_commits": ["02c94949482c4e27b2461d9f61f0d36d4da51807"],
       "ancestry_markers": ["FIET-PATCH:outerlook-986998e-live-retry-ranges"]
     },
     {
@@ -288,7 +288,7 @@
         "qualification/v0.43/candidate-embedded-lifecycle-receipt.json",
         "scripts/test_qualify_embedded_lifecycle.py"
       ],
-      "downstream_commits": ["fd7c2d7173afee8579f6aa6560d678d334445b73"],
+      "downstream_commits": ["a333f1eff8c4376b22fb47322865ae1d1d2cd56d"],
       "ancestry_markers": ["FIET-PATCH:maker-controlled-embedded-lifecycle"]
     }
   ]
