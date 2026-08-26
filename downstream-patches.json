@@ -13,10 +13,10 @@
   },
   "release": {
     "branch": "fiet/v0.43",
-    "state": "qualified",
-    "tag": "fiet-v0.43.0-1",
-    "peeled_commit": "76e72ce824c44f04e56a9a315766d4a67efddcee",
-    "peeled_tree": "23b2e212859f10115b3a05aae78f4fb13d868ac9"
+    "state": "candidate",
+    "tag": null,
+    "peeled_commit": null,
+    "peeled_tree": null
   },
   "governed_paths": "governed-paths.json",
   "patches": [
@@ -290,6 +290,56 @@
       ],
       "downstream_commits": ["a333f1eff8c4376b22fb47322865ae1d1d2cd56d"],
       "ancestry_markers": ["FIET-PATCH:maker-controlled-embedded-lifecycle"]
+    },
+    {
+      "id": "fiet-live-from-head-exact-cursor-seed",
+      "title": "Seed exact cursors for live-from-head details",
+      "owner": "usherlabs",
+      "rationale": "Preserve live-from-head startup for details without start_block while establishing their durable exact cursor identity before any empty-range or event progress can advance.",
+      "audit_disposition": "ported",
+      "release_state": "active",
+      "source": {
+        "repository": "https://github.com/usherlabs/rindexer",
+        "branch": "fiet/exact-cursor-seed-no-start-v0.43",
+        "commits": ["98762c2fbe75489485e78637309389c5723ee36a"]
+      },
+      "affected_paths": ["core/src/indexer/start.rs"],
+      "affected_behaviors": [
+        "live-from-head exact cursor seeding",
+        "fail-closed empty-range cursor advancement",
+        "unchanged current-head selection when start_block is omitted"
+      ],
+      "canonical_baseline": {
+        "tag": "v0.43.0",
+        "commit": "4f441289b83855c357239d2729fb725a56c3060b",
+        "tree": "80a2698f6be13949d84d920b01c02125af598d09"
+      },
+      "requirement_ids": [
+        "rindexer-indexing-integrity:exact-durable-detail-coverage-cursor",
+        "rindexer-indexing-integrity:ordered-progress-cannot-overtake-normative-persistence"
+      ],
+      "regression_tests": [
+        {
+          "id": "live-from-head-exact-cursor-seed",
+          "path": "core/tests/e2e_parallel_fetch.rs",
+          "command": "cargo nextest run -p rindexer --test e2e_parallel_fetch live_from_head_seeds_exact_cursor_before_first_advance --test-threads=1"
+        },
+        {
+          "id": "exact-cursor-atomicity",
+          "path": "core/tests/postgres_atomic_cursor.rs",
+          "command": "cargo nextest run -p rindexer --test postgres_atomic_cursor --test-threads=1"
+        }
+      ],
+      "upstream": {"status": "planned"},
+      "evidence": [
+        "Maker phase-2 local A/B candidate failed closed at head 468 because live-from-head event details had no durable cursor seed",
+        "focused regression failed with missing exact cursor seed before 98762c2fbe75489485e78637309389c5723ee36a and passed after it",
+        "PostgreSQL exact cursor regression suite: 8 passed, 0 failed",
+        "rindexer library suite: 794 passed, 4 skipped",
+        "parallel-fetch process suite: 4 passed, 0 skipped"
+      ],
+      "downstream_commits": ["98762c2fbe75489485e78637309389c5723ee36a"],
+      "ancestry_markers": ["FIET-PATCH:fiet-live-from-head-exact-cursor-seed"]
     }
   ]
 }
